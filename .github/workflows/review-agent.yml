@@ -71,7 +71,7 @@ jobs:
 
       - name: Review pull request
         if: steps.scan.outputs.detected != 'true'
-        uses: redhat-community-ai-tools/cicaddy-action@v0.3.2
+        uses: redhat-community-ai-tools/cicaddy-action@v0.4.0
         with:
           ai_provider: gemini
           ai_model: gemini-3-pro-preview
@@ -92,4 +92,5 @@ jobs:
             Post a structured review. If changes are needed, request changes.
             If everything looks good, approve the PR.
           post_pr_comment: 'true'
+          submit_review: 'true'
           github_token: ${{ steps.app-token.outputs.token }}
