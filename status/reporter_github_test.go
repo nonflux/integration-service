@@ -586,9 +586,9 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
 			// Expect comment body to start with marker and include footer
-		Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("<!-- integration-service:component=component component-sample:scenario=scenario1 -->"))
-		Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("### Integration test for snapshot snapshot-sample and scenario scenario1 failed\n\ndetailed text here"))
-		Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("<!-- integration-service-footer -->"))
+			Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("<!-- integration-service:component=component component-sample:scenario=scenario1 -->"))
+			Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("### Integration test for snapshot snapshot-sample and scenario scenario1 failed\n\ndetailed text here"))
+			Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("<!-- integration-service-footer -->"))
 		})
 
 		It("creates a commit status for snapshot with correct textual data, but does not create a comment for push event", func() {
