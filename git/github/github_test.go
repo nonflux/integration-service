@@ -114,7 +114,8 @@ func (MockIssuesService) CreateComment(
 func (MockIssuesService) ListComments(ctx context.Context, owner string, repo string,
 	number int, opts *ghapi.IssueListCommentsOptions) ([]*ghapi.IssueComment, *ghapi.Response, error) {
 	var id int64 = 40
-	var body = "Integration test for component component-sample snapshot snapshotName and scenario scenarioName failed"
+	// Comment with marker format matching the new implementation
+	var body = "<!-- integration-service:component=component component-sample:scenario=scenarioName -->\n### Integration test failed\n\nIntegration test for component component-sample snapshot snapshotName and scenario scenarioName failed\n<!-- integration-service-footer -->\n---\n*This comment is automatically updated by the integration service*"
 	issueComments := []*ghapi.IssueComment{{ID: &id, Body: &body}}
 	return issueComments, nil, nil
 }

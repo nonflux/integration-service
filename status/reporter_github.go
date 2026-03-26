@@ -405,30 +405,45 @@ func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, repor
 		return 0, unRecoverableError
 	}
 
-	comment, err := FormatComment(report.Summary, report.Text)
+	commentBody, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to format comment for pull-request %d: %s", issueNumber, err.Error()))
 		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
 		return 0, unRecoverableError
 	}
 
+	// Wrap comment with marker and footer for identification
+	componentName := GenerateComponentNameWithPrefix(report.ComponentName)
+	newComment := github.BuildCommentWithMarker(componentName, report.ScenarioName, commentBody)
+
 	allComments, statusCode, err := csu.ghClient.GetAllCommentsForPR(ctx, csu.owner, csu.repo, issueNumber)
 	if err != nil {
 		csu.logger.Error(err, fmt.Sprintf("error while getting all comments for pull-request %s", issueNumberStr))
 		return statusCode, fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
 	}
-	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, GenerateComponentNameWithPrefix(report.ComponentName), report.ScenarioName)
+
+	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, componentName, report.ScenarioName)
 	if existingCommentId == nil {
-		_, statusCode, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
+		// Create new comment
+		_, statusCode, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, newComment)
 		if err != nil {
 			csu.logger.Error(err, fmt.Sprintf("error while creating comment for pull-request %s", issueNumberStr))
 			return statusCode, fmt.Errorf("error while creating comment for pull-request %s: %w", issueNumberStr, err)
 		}
+		csu.logger.Info("Created new comment with marker", "scenario", report.ScenarioName, "component", componentName)
 	} else {
-		_, statusCode, err = csu.ghClient.EditComment(ctx, csu.owner, csu.repo, *existingCommentId, comment)
-		if err != nil {
-			csu.logger.Error(err, fmt.Sprintf("error while updating comment for pull-request %s", issueNumberStr))
-			return statusCode, fmt.Errorf("error while updating comment for pull-request %s: %w", issueNumberStr, err)
+		// Update existing comment with collapsible history
+		for _, comment := range allComments {
+			if comment.ID != nil && *comment.ID == *existingCommentId && comment.Body != nil {
+				updatedComment := csu.ghClient.BuildUpdatedComment(*comment.Body, newComment)
+				_, statusCode, err = csu.ghClient.EditComment(ctx, csu.owner, csu.repo, *existingCommentId, updatedComment)
+				if err != nil {
+					csu.logger.Error(err, fmt.Sprintf("error while updating comment for pull-request %s", issueNumberStr))
+					return statusCode, fmt.Errorf("error while updating comment for pull-request %s: %w", issueNumberStr, err)
+				}
+				csu.logger.Info("Updated existing comment with collapsible history", "scenario", report.ScenarioName, "component", componentName)
+				break
+			}
 		}
 	}
 
