@@ -116,15 +116,6 @@ jobs:
             Submit a structured review using `gh pr review`:
             - If changes are needed: `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<review>"`
             - If everything looks good: `gh pr review ${{ github.event.pull_request.number }} --approve --body "<review>"`
-
-            After submitting the review, post a summary comment using the
-            <!-- fullsend:review-agent --> marker for in-place updates:
-            1. Check for an existing comment: `gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | startswith("<!-- fullsend:review-agent -->")) | .id' | head -1`
-            2. If found, fetch the old body (everything after the marker line), then PATCH the comment with:
-               - The marker line
-               - Your new review summary
-               - The old content collapsed in a `<details><summary><b>Previous update</b></summary>...</details>` block
-            3. If not found, create a new comment:
-               `gh pr comment ${{ github.event.pull_request.number }} --body "<!-- fullsend:review-agent -->\n<your summary>"`
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
