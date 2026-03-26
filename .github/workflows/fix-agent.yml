@@ -6,6 +6,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  workflows: write
 
 concurrency:
   group: fix-agent-pr-${{ github.event.pull_request.number }}
