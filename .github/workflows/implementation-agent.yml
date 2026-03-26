@@ -92,9 +92,19 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0.1.21
         with:
           gemini_api_key: ${{ secrets.AI_API_KEY }}
-          gemini_model: gemini-3-pro-preview
+          gemini_model: gemini-1.5-pro
           settings: |
-            {}
+            {
+              "tools": {
+                "core": [
+                  "read_file",
+                  "write_file",
+                  "run_shell_command(git)",
+                  "run_shell_command(gh)",
+                  "run_shell_command(make)"
+                ]
+              }
+            }
           prompt: |
             Read the GEMINI.md file for project context and coding standards.
             Read the .gemini/commands/implement-from-issue.md skill for detailed instructions.
