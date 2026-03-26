@@ -115,6 +115,7 @@ type ClientInterface interface {
 	GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64
 	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, int, error)
 	GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, int, error)
+	BuildUpdatedComment(oldBody, newBody string) string
 }
 
 // Client is an abstraction around the API client.
@@ -432,17 +433,99 @@ func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *C
 }
 
 // GetExistingComment returns existing GitHub comment for the scenario of ref.
+// It looks for a comment that starts with the comment marker.
 func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64 {
+	marker := buildCommentMarker(componentName, scenarioName)
 	for _, comment := range comments {
-		// get existing note by search "Integration test for componentName" and " scenario scenarioName " in report summary
-		// GetExistingNoteID for gitlab comment has the similar logic
-		if strings.Contains(*comment.Body, fmt.Sprintf("Integration test for %s ", componentName)) && strings.Contains(*comment.Body, fmt.Sprintf(" scenario %s ", scenarioName)) {
-			c.logger.Info("found comment ID with a matching scenarioName", "scenarioName", scenarioName)
+		if comment.Body != nil && strings.HasPrefix(*comment.Body, marker) {
+			c.logger.Info("found comment ID with matching marker", "scenarioName", scenarioName, "componentName", componentName)
 			return comment.ID
 		}
 	}
-	c.logger.Info("found no comment with a matching scenarioName", "scenarioName", scenarioName)
+	c.logger.Info("found no comment with matching marker", "scenarioName", scenarioName, "componentName", componentName)
 	return nil
+}
+
+// buildCommentMarker generates a unique HTML comment marker for identifying bot comments
+func buildCommentMarker(componentName, scenarioName string) string {
+	return fmt.Sprintf("<!-- integration-service:component=%s:scenario=%s -->", componentName, scenarioName)
+}
+
+const (
+	// MaxCommentLength is GitHub's limit for issue comments (65,536 characters)
+	MaxCommentLength = 65000
+	// FooterMarker is used to identify and strip footers from old comments
+	FooterMarker = "<!-- integration-service-footer -->"
+)
+
+// stripFooter removes the trailing footer from a comment body.
+// Looks for the unique FooterMarker to avoid accidentally stripping markdown horizontal rules.
+func stripFooter(body string) string {
+	idx := strings.LastIndex(body, FooterMarker)
+	if idx != -1 {
+		return strings.TrimSpace(body[:idx])
+	}
+	return strings.TrimSpace(body)
+}
+
+// buildUpdatedCommentBody prepends new content and collapses the previous analysis.
+// Footers are stripped from old content to avoid duplication.
+// If the result exceeds the GitHub character limit, the oldest history entries are dropped.
+func buildUpdatedCommentBody(oldBody, newBody string) string {
+	historyTag := "\n<details>\n<summary><b>Previous analyses</b></summary>\n\n"
+	historyEnd := "\n</details>\n"
+
+	// Strip footer from old content before collapsing
+	oldContent := stripFooter(oldBody)
+
+	var collapsed string
+	if strings.Contains(oldContent, historyTag) {
+		// Split existing content and history
+		parts := strings.SplitN(oldContent, historyTag, 2)
+		currentSection := parts[0]
+		existingHistory := parts[1]
+
+		// Remove closing tag from existing history if present
+		existingHistory = strings.TrimSpace(existingHistory)
+		existingHistory = strings.TrimSuffix(existingHistory, "</details>")
+		existingHistory = strings.TrimSpace(existingHistory)
+
+		// Build collapsed section with current content added to history
+		collapsed = fmt.Sprintf("%s%s\n\n%s%s",
+			historyTag,
+			strings.TrimSpace(currentSection),
+			existingHistory,
+			historyEnd)
+	} else {
+		// No existing history, create new history section
+		collapsed = fmt.Sprintf("%s%s%s",
+			historyTag,
+			strings.TrimSpace(oldContent),
+			historyEnd)
+	}
+
+	result := fmt.Sprintf("%s\n%s", newBody, collapsed)
+
+	// Truncate history if the comment exceeds the character limit
+	if len(result) > MaxCommentLength {
+		truncationNote := "\n\n*[Older history truncated to stay within GitHub character limit]*"
+		result = newBody + truncationNote
+	}
+
+	return result
+}
+
+// BuildCommentWithMarker wraps the comment body with a marker and footer for identification and updating.
+func BuildCommentWithMarker(componentName, scenarioName, body string) string {
+	marker := buildCommentMarker(componentName, scenarioName)
+	footer := fmt.Sprintf("\n%s\n---\n*This comment is automatically updated by the integration service*", FooterMarker)
+	return fmt.Sprintf("%s\n%s%s", marker, body, footer)
+}
+
+// BuildUpdatedComment builds an updated comment body with collapsible history.
+// This is a public wrapper around buildUpdatedCommentBody for use by the Client.
+func (c *Client) BuildUpdatedComment(oldBody, newBody string) string {
+	return buildUpdatedCommentBody(oldBody, newBody)
 }
 
 // GetAllCommitStatusesForRef returns all existing GitHub CommitStatuses if a match for the Owner, Repo, and SHA.
