@@ -1,0 +1,139 @@
+name: Fix Agent
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: fix-agent-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fix-feedback:
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.review.user.login == 'fullsend-reviewer[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.AGENT_TOKEN }}
+
+      - name: Attach local branch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: git checkout "$HEAD_REF"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Scan review for prompt injection
+        id: scan
+        run: |
+          REVIEW_BODY=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+            --jq '[.[].body // ""] | join("\n")')
+          REVIEW_COMMENTS=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+            --jq '[.[].body // ""] | join("\n")')
+          ISSUE_COMMENTS=$(gh api --paginate repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --jq '[.[].body // ""] | join("\n")')
+          export REVIEW_TEXT="${REVIEW_BODY}
+          ${REVIEW_COMMENTS}
+          ${ISSUE_COMMENTS}"
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            -H "Content-Type: application/json" \
+            "https://modelarmor.${GCP_LOCATION}.rep.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/templates/${MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt" \
+            -d "$(jq -n '{user_prompt_data: {text: env.REVIEW_TEXT}}')")
+          echo "$RESPONSE" | jq .
+          MATCH=$(echo "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
+          if [ "$MATCH" = "MATCH_FOUND" ]; then
+            echo "::error::Model Armor detected prompt injection in review"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          elif [ "$MATCH" = "NO_MATCH_FOUND" ]; then
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Model Armor scan failed: $MATCH"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          MODEL_ARMOR_TEMPLATE: ${{ secrets.MODEL_ARMOR_TEMPLATE }}
+
+      - name: Flag injected review
+        if: steps.scan.outputs.detected == 'true'
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "⚠️ **Prompt injection detected in review comments.** Fix agent will not process this feedback. A human maintainer will review."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check iteration count
+        if: steps.scan.outputs.detected != 'true'
+        id: iteration
+        run: |
+          COUNT=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+            --jq '[.[] | select(.user.login == "fullsend-reviewer[bot]" and .state == "CHANGES_REQUESTED")] | length' || echo "0")
+          COUNT=${COUNT:-0}
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -ge 5 ]; then
+            echo "escalate=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Escalate to human
+        if: steps.scan.outputs.detected != 'true' && steps.iteration.outputs.escalate == 'true'
+        run: |
+          OWNERS=$(grep -m1 'fix-agent.yml' .github/CODEOWNERS | sed 's/^[^ ]* //')
+          OWNERS=${OWNERS:-"repository maintainers"}
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "⚠️ Iteration limit reached (5 review-fix cycles). Escalating to human review. ${OWNERS}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        if: steps.scan.outputs.detected != 'true' && steps.iteration.outputs.escalate != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Configure git
+        if: steps.scan.outputs.detected != 'true' && steps.iteration.outputs.escalate != 'true'
+        run: |
+          git config user.name "fullsend-agent[bot]"
+          git config user.email "fullsend-agent[bot]@users.noreply.github.com"
+
+      - name: Fix review feedback
+        if: steps.scan.outputs.detected != 'true' && steps.iteration.outputs.escalate != 'true'
+        uses: google-github-actions/run-gemini-cli@v1
+        with:
+          gemini_api_key: ${{ secrets.AI_API_KEY }}
+          gemini_model: gemini-3-pro-preview
+          settings: |
+            {}
+          prompt: |
+            Read the GEMINI.md file for project context.
+            Read the .gemini/commands/fix-review-feedback.md skill for detailed instructions.
+
+            Address review feedback on PR #${{ github.event.pull_request.number }}.
+
+            Read the review: `gh pr view ${{ github.event.pull_request.number }} --json reviews`
+            Read inline comments: `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments`
+
+            Follow the fix-review-feedback skill steps to address all comments,
+            run tests, commit, and push.
+          upload_artifacts: 'true'
+          github_pr_number: '${{ github.event.pull_request.number }}'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_TOKEN }}

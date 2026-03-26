@@ -1,0 +1,107 @@
+name: Implementation Agent
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: implement-agent-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ready-for-implementation'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.AGENT_TOKEN }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Scan issue with Model Armor
+        id: scan
+        run: |
+          ISSUE_BODY=$(gh issue view ${{ github.event.issue.number }} \
+            --json title,body --jq '.title + "\n" + (.body // "")')
+          export ISSUE_TEXT="$ISSUE_BODY"
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            -H "Content-Type: application/json" \
+            "https://modelarmor.${GCP_LOCATION}.rep.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/templates/${MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt" \
+            -d "$(jq -n '{user_prompt_data: {text: env.ISSUE_TEXT}}')")
+          echo "$RESPONSE" | jq .
+          MATCH=$(echo "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
+          if [ "$MATCH" = "MATCH_FOUND" ]; then
+            echo "::error::Model Armor detected prompt injection in issue"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          elif [ "$MATCH" = "NO_MATCH_FOUND" ]; then
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Model Armor scan failed: $MATCH"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          MODEL_ARMOR_TEMPLATE: ${{ secrets.MODEL_ARMOR_TEMPLATE }}
+
+      - name: Flag injected issue
+        if: steps.scan.outputs.detected == 'true'
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "⚠️ **Prompt injection detected.** Implementation agent will not process this issue. A human maintainer will review it."
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "ready-for-implementation" \
+            --add-label "security/prompt-injection"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        if: steps.scan.outputs.detected != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Configure git
+        if: steps.scan.outputs.detected != 'true'
+        run: |
+          git config user.name "fullsend-agent[bot]"
+          git config user.email "fullsend-agent[bot]@users.noreply.github.com"
+
+      - name: Implement issue
+        if: steps.scan.outputs.detected != 'true'
+        uses: google-github-actions/run-gemini-cli@v1
+        with:
+          gemini_api_key: ${{ secrets.AI_API_KEY }}
+          gemini_model: gemini-3-pro-preview
+          settings: |
+            {}
+          prompt: |
+            Read the GEMINI.md file for project context and coding standards.
+            Read the .gemini/commands/implement-from-issue.md skill for detailed instructions.
+
+            Implement GitHub issue #${{ github.event.issue.number }}.
+
+            Use `gh issue view ${{ github.event.issue.number }}` to read the full issue.
+
+            Follow the implement-from-issue skill steps:
+            1. Create branch agent/${{ github.event.issue.number }}-<short-desc>
+            2. Implement the changes
+            3. Run `make test` and `make lint`
+            4. Commit, push, and open a PR with `gh pr create`
+            5. PR body must include: Closes #${{ github.event.issue.number }}
+          upload_artifacts: 'true'
+          github_issue_number: '${{ github.event.issue.number }}'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_TOKEN }}

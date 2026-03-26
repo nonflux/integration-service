@@ -1,0 +1,95 @@
+name: Review Agent
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: review-agent-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Scan PR for prompt injection
+        id: scan
+        run: |
+          PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} \
+            --json title,body --jq '.title + "\n" + (.body // "")')
+          export PR_TEXT="$PR_BODY"
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            -H "Content-Type: application/json" \
+            "https://modelarmor.${GCP_LOCATION}.rep.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/templates/${MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt" \
+            -d "$(jq -n '{user_prompt_data: {text: env.PR_TEXT}}')")
+          echo "$RESPONSE" | jq .
+          MATCH=$(echo "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
+          if [ "$MATCH" = "MATCH_FOUND" ]; then
+            echo "::error::Model Armor detected prompt injection in PR"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          elif [ "$MATCH" = "NO_MATCH_FOUND" ]; then
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Model Armor scan failed: $MATCH"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          MODEL_ARMOR_TEMPLATE: ${{ secrets.MODEL_ARMOR_TEMPLATE }}
+
+      - name: Flag injected PR
+        if: steps.scan.outputs.detected == 'true'
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "⚠️ **Prompt injection detected in PR title/body.** Review skipped by Model Armor. A human maintainer will review this PR."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate reviewer app token
+        if: steps.scan.outputs.detected != 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_APP_PRIVATE_KEY }}
+
+      - name: Review pull request
+        if: steps.scan.outputs.detected != 'true'
+        uses: redhat-community-ai-tools/cicaddy-action@v0.3.2
+        with:
+          ai_provider: gemini
+          ai_model: gemini-3-pro-preview
+          ai_api_key: ${{ secrets.AI_API_KEY }}
+          task_prompt: |
+            Review pull request #${{ github.event.pull_request.number }}.
+
+            PR title: "${{ github.event.pull_request.title }}"
+            PR author: ${{ github.event.pull_request.user.login }}
+
+            Review for:
+            1. **Correctness** — does the code do what the PR description says?
+            2. **Security** — any injection, privilege escalation, RBAC issues?
+            3. **Style** — does it follow existing code patterns in the repo?
+            4. **Tests** — are new functions tested? Edge cases covered?
+            5. **Kubernetes conventions** — proper error handling, status updates, RBAC markers?
+
+            Post a structured review. If changes are needed, request changes.
+            If everything looks good, approve the PR.
+          post_pr_comment: 'true'
+          github_token: ${{ steps.app-token.outputs.token }}
