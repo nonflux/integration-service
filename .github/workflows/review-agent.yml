@@ -74,7 +74,7 @@ jobs:
         uses: redhat-community-ai-tools/cicaddy-action@v0.4.0
         with:
           ai_provider: gemini
-          ai_model: gemini-1.5-pro
+          ai_model: gemini-3.1-pro-preview
           ai_api_key: ${{ secrets.AI_API_KEY }}
           task_prompt: |
             Review pull request #${{ github.event.pull_request.number }}.
