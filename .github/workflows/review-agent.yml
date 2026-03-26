@@ -83,16 +83,28 @@ jobs:
 
       - name: Review pull request
         if: steps.scan.outputs.detected != 'true'
-        uses: redhat-community-ai-tools/cicaddy-action@v0.4.0
+        uses: google-github-actions/run-gemini-cli@v0.1.21
         with:
-          ai_provider: gemini
-          ai_model: gemini-3.1-pro-preview
-          ai_api_key: ${{ secrets.AI_API_KEY }}
-          task_prompt: |
+          gemini_api_key: ${{ secrets.AI_API_KEY }}
+          gemini_model: gemini-3.1-pro-preview
+          settings: |
+            {
+              "tools": {
+                "core": [
+                  "read_file",
+                  "run_shell_command(gh)",
+                  "run_shell_command(git)"
+                ]
+              }
+            }
+          prompt: |
             Review pull request #${{ github.event.pull_request.number }}.
 
             PR title: "${{ github.event.pull_request.title }}"
             PR author: ${{ github.event.pull_request.user.login }}
+
+            Use `gh pr diff ${{ github.event.pull_request.number }}` to read the full diff.
+            Use `gh pr view ${{ github.event.pull_request.number }}` to read the PR description.
 
             Review for:
             1. **Correctness** — does the code do what the PR description says?
@@ -101,8 +113,18 @@ jobs:
             4. **Tests** — are new functions tested? Edge cases covered?
             5. **Kubernetes conventions** — proper error handling, status updates, RBAC markers?
 
-            Post a structured review. If changes are needed, request changes.
-            If everything looks good, approve the PR.
-          post_pr_comment: 'true'
-          submit_review: 'true'
-          github_token: ${{ steps.app-token.outputs.token }}
+            Submit a structured review using `gh pr review`:
+            - If changes are needed: `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<review>"`
+            - If everything looks good: `gh pr review ${{ github.event.pull_request.number }} --approve --body "<review>"`
+
+            After submitting the review, post a summary comment using the
+            <!-- fullsend:review-agent --> marker for in-place updates:
+            1. Check for an existing comment: `gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | startswith("<!-- fullsend:review-agent -->")) | .id' | head -1`
+            2. If found, fetch the old body (everything after the marker line), then PATCH the comment with:
+               - The marker line
+               - Your new review summary
+               - The old content collapsed in a `<details><summary><b>Previous update</b></summary>...</details>` block
+            3. If not found, create a new comment:
+               `gh pr comment ${{ github.event.pull_request.number }} --body "<!-- fullsend:review-agent -->\n<your summary>"`
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
