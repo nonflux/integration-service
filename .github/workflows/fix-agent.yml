@@ -6,7 +6,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  workflows: write
 
 concurrency:
   group: fix-agent-pr-${{ github.event.pull_request.number }}
@@ -34,11 +33,6 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Attach local branch
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: git checkout -- "$HEAD_REF"
-
       - name: Check iteration count
         id: iteration
         run: |
@@ -46,7 +40,7 @@ jobs:
             --jq '[.[] | select(.user.login == "fullsend-reviewer[bot]" and .state == "CHANGES_REQUESTED")] | length' || echo "0")
           COUNT=${COUNT:-0}
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
-          if [ "$COUNT" -ge 5 ]; then
+          if [[ "$COUNT" =~ ^[0-9]+$ ]] && [ "$COUNT" -ge 5 ]; then
             echo "escalate=true" >> "$GITHUB_OUTPUT"
           fi
         env:
