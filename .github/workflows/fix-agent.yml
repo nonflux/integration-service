@@ -57,9 +57,20 @@ jobs:
         run: |
           OWNERS=$(grep -m1 'fix-agent.yml' .github/CODEOWNERS | sed 's/^[^ ]* //')
           OWNERS=${OWNERS:-"repository maintainers"}
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --body "<!-- fullsend:fix-agent -->
-          ⚠️ Iteration limit reached (5 review-fix cycles). Escalating to human review. ${OWNERS}"
+          MARKER="<!-- fullsend:fix-agent -->"
+          NEW_CONTENT="⚠️ Iteration limit reached (5 review-fix cycles). Escalating to human review. ${OWNERS}"
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
+            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
+            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
+              "$MARKER" "$NEW_CONTENT" "$OLD_CONTENT"
+            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
+          else
+            printf -v BODY '%s\n%s' "$MARKER" "$NEW_CONTENT"
+            gh pr comment ${{ github.event.pull_request.number }} --body "$BODY"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -105,8 +116,8 @@ jobs:
             Follow the fix-review-feedback skill steps to address all comments,
             run tests, commit, and push.
 
-            IMPORTANT: When posting any comments on the PR, always start the comment body with
-            the hidden HTML header: <!-- fullsend:fix-agent -->
+            IMPORTANT: Follow the "Posting Comments" section in fix-review-feedback.md
+            for in-place comment updates using the <!-- fullsend:fix-agent --> marker.
           upload_artifacts: 'true'
           github_pr_number: '${{ github.event.pull_request.number }}'
         env:

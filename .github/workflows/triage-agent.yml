@@ -51,9 +51,20 @@ jobs:
       - name: Flag injected issue
         if: steps.scan.outputs.detected == 'true'
         run: |
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "<!-- fullsend:triage-agent -->
-          ⚠️ **Prompt injection detected.** This issue has been flagged by Google Cloud Model Armor and will not be processed by the agent. A human maintainer will review it."
+          MARKER="<!-- fullsend:triage-agent -->"
+          NEW_CONTENT="⚠️ **Prompt injection detected.** This issue has been flagged by Google Cloud Model Armor and will not be processed by the agent. A human maintainer will review it."
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
+            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
+            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
+              "$MARKER" "$NEW_CONTENT" "$OLD_CONTENT"
+            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
+          else
+            printf -v BODY '%s\n%s' "$MARKER" "$NEW_CONTENT"
+            gh issue comment ${{ github.event.issue.number }} --body "$BODY"
+          fi
           gh issue edit ${{ github.event.issue.number }} \
             --add-label "security/prompt-injection"
         env:
@@ -94,8 +105,8 @@ jobs:
             Use `gh issue view ${{ github.event.issue.number }}` to read the full issue body.
             Then follow the triage-issue skill steps to classify and label it.
 
-            IMPORTANT: When posting any comments on the issue, always start the comment body with
-            the hidden HTML header: <!-- fullsend:triage-agent -->
+            IMPORTANT: Follow the "Posting Comments" section in triage-issue.md
+            for in-place comment updates using the <!-- fullsend:triage-agent --> marker.
           upload_artifacts: 'true'
           github_issue_number: '${{ github.event.issue.number }}'
         env:
