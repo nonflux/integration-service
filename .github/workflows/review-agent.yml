@@ -125,6 +125,13 @@ jobs:
         if: steps.scan.outputs.detected != 'true'
         run: echo "${{ steps.app-token.outputs.token }}" | gh auth login --with-token
 
+      - name: Generate review output path
+        if: steps.scan.outputs.detected != 'true'
+        id: review-path
+        run: |
+          REVIEW_FILE="/tmp/review-${GITHUB_RUN_ID}-$(openssl rand -hex 8).md"
+          echo "file=$REVIEW_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Review pull request
         if: steps.scan.outputs.detected != 'true'
         uses: google-github-actions/run-gemini-cli@v0.1.21
@@ -165,7 +172,7 @@ jobs:
             4. **Tests** — are new functions tested? Edge cases covered?
             5. **Kubernetes conventions** — proper error handling, status updates, RBAC markers?
 
-            After completing your review, write your full review content to the file `/tmp/review.md`.
+            After completing your review, write your full review content to the file `${{ steps.review-path.outputs.file }}`.
             Do NOT post any PR comments or submit any PR review yourself — that will be handled automatically.
 
             At the end of the file, add a verdict line on its own line:
@@ -177,14 +184,14 @@ jobs:
       - name: Post review comment
         if: steps.scan.outputs.detected != 'true'
         run: |
-          if [ ! -f /tmp/review.md ]; then
-            echo "::error::Review agent did not produce /tmp/review.md"
+          if [ ! -f ${{ steps.review-path.outputs.file }} ]; then
+            echo "::error::Review agent did not produce ${{ steps.review-path.outputs.file }}"
             exit 1
           fi
 
           # Extract verdict and review body
-          VERDICT=$(grep -oP '(?<=VERDICT: )\S+' /tmp/review.md | tail -1)
-          REVIEW_BODY=$(sed '/^VERDICT: /d' /tmp/review.md)
+          VERDICT=$(grep -oP '(?<=VERDICT: )\S+' ${{ steps.review-path.outputs.file }} | tail -1)
+          REVIEW_BODY=$(sed '/^VERDICT: /d' ${{ steps.review-path.outputs.file }})
 
           MARKER="<!-- fullsend:review-agent -->"
           PR_NUMBER="${{ github.event.pull_request.number }}"

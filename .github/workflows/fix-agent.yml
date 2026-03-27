@@ -177,6 +177,13 @@ jobs:
           git config user.name "fullsend-agent[bot]"
           git config user.email "fullsend-agent[bot]@users.noreply.github.com"
 
+      - name: Generate fix output path
+        if: steps.iteration.outputs.escalate != 'true'
+        id: fix-path
+        run: |
+          FIX_FILE="/tmp/fix-status-${GITHUB_RUN_ID}-$(openssl rand -hex 8).md"
+          echo "file=$FIX_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Fix review feedback
         if: steps.pr.outputs.trigger == 'bot' && steps.iteration.outputs.escalate != 'true'
         uses: google-github-actions/run-gemini-cli@v0.1.21
@@ -213,7 +220,7 @@ jobs:
             Follow the fix-review-feedback skill steps to address all comments,
             run tests, commit, and push.
 
-            After finishing, write a short status summary to `/tmp/fix-status.md` describing
+            After finishing, write a short status summary to `${{ steps.fix-path.outputs.file }}` describing
             what you fixed and any remaining issues. Do NOT post PR comments yourself.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
@@ -252,7 +259,7 @@ jobs:
             3. Run `make test` and `make lint` to verify
             4. Commit with a descriptive message and push
 
-            After finishing, write a short status summary to `/tmp/fix-status.md` describing
+            After finishing, write a short status summary to `${{ steps.fix-path.outputs.file }}` describing
             what you fixed and any remaining issues. Do NOT post PR comments yourself.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
@@ -262,11 +269,11 @@ jobs:
       - name: Post fix status comment
         if: steps.iteration.outputs.escalate != 'true' && always()
         run: |
-          if [ ! -f /tmp/fix-status.md ]; then
-            echo "Fix agent did not produce a status file." > /tmp/fix-status.md
+          if [ ! -f ${{ steps.fix-path.outputs.file }} ]; then
+            echo "Fix agent did not produce a status file." > ${{ steps.fix-path.outputs.file }}
           fi
 
-          STATUS_BODY=$(cat /tmp/fix-status.md)
+          STATUS_BODY=$(cat ${{ steps.fix-path.outputs.file }})
           MARKER="<!-- fullsend:fix-agent -->"
           PR_NUMBER="${{ steps.pr.outputs.number }}"
 
