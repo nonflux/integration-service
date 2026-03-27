@@ -185,9 +185,6 @@ jobs:
       - name: Post review comment
         if: steps.scan.outputs.detected != 'true'
         run: |
-          # Authenticate with reviewer app token for write access
-          echo "${{ steps.app-token.outputs.token }}" | gh auth login --with-token
-
           if [ ! -f ${{ steps.review-path.outputs.file }} ]; then
             echo "::error::Review agent did not produce ${{ steps.review-path.outputs.file }}"
             exit 1
