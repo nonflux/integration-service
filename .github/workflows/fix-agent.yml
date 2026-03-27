@@ -260,7 +260,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Post fix status comment
-        if: steps.iteration.outputs.escalate != 'true' && always()
+        if: steps.iteration.outputs.escalate != 'true' && !cancelled()
         run: |
           if [ ! -f ${{ steps.fix-path.outputs.file }} ]; then
             echo "Fix agent did not produce a status file." > ${{ steps.fix-path.outputs.file }}
