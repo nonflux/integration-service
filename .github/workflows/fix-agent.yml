@@ -9,7 +9,7 @@ permissions:
   workflows: write
 
 concurrency:
-  group: fullsend-pr-${{ github.event.pull_request.number }}
+  group: fullsend-fix-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:

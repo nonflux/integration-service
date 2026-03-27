@@ -9,8 +9,8 @@ permissions:
   checks: write
 
 concurrency:
-  group: fullsend-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: fullsend-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   review:
