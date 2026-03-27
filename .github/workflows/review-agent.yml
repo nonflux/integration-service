@@ -9,7 +9,7 @@ permissions:
   checks: write
 
 concurrency:
-  group: review-agent-pr-${{ github.event.pull_request.number }}
+  group: fullsend-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
