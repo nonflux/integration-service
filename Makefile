@@ -119,6 +119,8 @@ download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of depende
 .PHONY: test
 test: manifests generate fmt vet envtest download-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+	.github/scripts/scan-model-armor_test.sh
+	.github/scripts/update-comment_test.sh
 
 ##@ Build
 

@@ -20,15 +20,15 @@ export -f gcloud
 
 echo "test content" > mock_input.txt
 
-MOCK_RESPONSE="MATCH_FOUND"
+export MOCK_RESPONSE="MATCH_FOUND"
 RESULT=$(./.github/scripts/scan-model-armor.sh mock_input.txt "loc" "proj" "temp")
 if [ "$RESULT" != "true" ]; then echo "Test 1 failed"; exit 1; fi
 
-MOCK_RESPONSE="NO_MATCH_FOUND"
+export MOCK_RESPONSE="NO_MATCH_FOUND"
 RESULT=$(./.github/scripts/scan-model-armor.sh mock_input.txt "loc" "proj" "temp")
 if [ "$RESULT" != "false" ]; then echo "Test 2 failed"; exit 1; fi
 
-MOCK_RESPONSE="UNKNOWN"
+export MOCK_RESPONSE="UNKNOWN"
 RESULT=$(./.github/scripts/scan-model-armor.sh mock_input.txt "loc" "proj" "temp")
 if [ "$RESULT" != "true" ]; then echo "Test 3 failed"; exit 1; fi
 

@@ -14,3 +14,6 @@
 
 # CODEOWNERS itself — prevents agents from weakening review gates
 /.github/CODEOWNERS @konflux-ci/fullsend-sig
+
+# Agent executable scripts
+/.github/scripts/ @konflux-ci/fullsend-sig

@@ -43,12 +43,12 @@ jobs:
         id: pr
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            PR_NUMBER="${{ inputs.pr_number }}"
+            PR_NUMBER="$INPUT_PR_NUMBER"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
               --jq '{ref: .head.ref, repo: .head.repo.full_name}')
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
             echo "trigger=human" >> "$GITHUB_OUTPUT"
-            echo "instruction=${{ inputs.instruction }}" >> "$GITHUB_OUTPUT"
+            echo "instruction=$INPUT_INSTRUCTION" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             PR_NUMBER="${{ github.event.issue.number }}"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
@@ -74,6 +74,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_INSTRUCTION: ${{ inputs.instruction }}
 
       - name: React to command
         if: steps.pr.outputs.trigger == 'human'
@@ -89,6 +91,14 @@ jobs:
         with:
           app-id: ${{ secrets.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+
+      - name: Checkout base branch for trusted scripts
+        uses: actions/checkout@v6
+
+      - name: Copy trusted scripts
+        run: |
+          mkdir -p /tmp/scripts
+          cp -r .github/scripts/* /tmp/scripts/
 
       - name: Checkout PR branch
         uses: actions/checkout@v6
@@ -150,7 +160,7 @@ jobs:
           OWNERS=${OWNERS:-"repository maintainers"}
           MARKER="<!-- fullsend:fix-agent -->"
           NEW_CONTENT="⚠️ ${{ steps.iteration.outputs.reason }}. Escalating to human review. ${OWNERS}"
-          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$NEW_CONTENT"
+          /tmp/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$NEW_CONTENT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -271,6 +281,6 @@ jobs:
           PR_NUMBER="${{ steps.pr.outputs.number }}"
 
           # Check for existing comment with marker
-          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$STATUS_BODY"
+          /tmp/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$STATUS_BODY"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
