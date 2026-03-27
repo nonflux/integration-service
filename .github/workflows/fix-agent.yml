@@ -150,18 +150,7 @@ jobs:
           OWNERS=${OWNERS:-"repository maintainers"}
           MARKER="<!-- fullsend:fix-agent -->"
           NEW_CONTENT="⚠️ ${{ steps.iteration.outputs.reason }}. Escalating to human review. ${OWNERS}"
-          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments" \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
-          if [ -n "$COMMENT_ID" ]; then
-            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
-            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
-            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
-              "$MARKER" "$NEW_CONTENT" "$OLD_CONTENT"
-            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
-          else
-            printf -v BODY '%s\n%s' "$MARKER" "$NEW_CONTENT"
-            gh pr comment ${{ steps.pr.outputs.number }} --body "$BODY"
-          fi
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$NEW_CONTENT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -282,18 +271,6 @@ jobs:
           PR_NUMBER="${{ steps.pr.outputs.number }}"
 
           # Check for existing comment with marker
-          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
-
-          if [ -n "$COMMENT_ID" ]; then
-            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
-            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
-            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
-              "$MARKER" "$STATUS_BODY" "$OLD_CONTENT"
-            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
-          else
-            printf -v BODY '%s\n%s' "$MARKER" "$STATUS_BODY"
-            gh pr comment "$PR_NUMBER" --body "$BODY"
-          fi
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$STATUS_BODY"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

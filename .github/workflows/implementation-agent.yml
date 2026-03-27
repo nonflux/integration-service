@@ -38,24 +38,14 @@ jobs:
       - name: Scan issue with Model Armor
         id: scan
         run: |
-          ISSUE_BODY=$(gh issue view ${{ github.event.issue.number }} \
-            --json title,body --jq '.title + "\n" + (.body // "")')
-          export ISSUE_TEXT="$ISSUE_BODY"
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-            -H "Content-Type: application/json" \
-            "https://modelarmor.${GCP_LOCATION}.rep.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/templates/${MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt" \
-            -d "$(jq -n '{user_prompt_data: {text: env.ISSUE_TEXT}}')")
-          echo "$RESPONSE" | jq .
-          MATCH=$(echo "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
-          if [ "$MATCH" = "MATCH_FOUND" ]; then
-            echo "::error::Model Armor detected prompt injection in issue"
+          TEXT=$(gh issue view ${{ github.event.issue.number }} --json title,body --jq '.title + "\n" + (.body // "")')
+          echo "$TEXT" > scan_input.txt
+          MATCH=$(.github/scripts/scan-model-armor.sh scan_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
+          if [ "$MATCH" = "true" ]; then
+            echo "::error::Model Armor detected prompt injection"
             echo "detected=true" >> "$GITHUB_OUTPUT"
-          elif [ "$MATCH" = "NO_MATCH_FOUND" ]; then
-            echo "detected=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Model Armor scan failed: $MATCH"
-            echo "detected=true" >> "$GITHUB_OUTPUT"
+            echo "detected=false" >> "$GITHUB_OUTPUT"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,18 +58,7 @@ jobs:
         run: |
           MARKER="<!-- fullsend:implementation-agent -->"
           NEW_CONTENT="⚠️ **Prompt injection detected.** Implementation agent will not process this issue. A human maintainer will review it."
-          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
-          if [ -n "$COMMENT_ID" ]; then
-            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
-            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
-            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
-              "$MARKER" "$NEW_CONTENT" "$OLD_CONTENT"
-            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
-          else
-            printf -v BODY '%s\n%s' "$MARKER" "$NEW_CONTENT"
-            gh issue comment ${{ github.event.issue.number }} --body "$BODY"
-          fi
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${{ github.event.issue.number }}" "$MARKER" "$NEW_CONTENT"
           gh issue edit ${{ github.event.issue.number }} \
             --remove-label "ready-for-implementation" \
             --add-label "security/prompt-injection"
@@ -112,6 +91,8 @@ jobs:
                   "write_file",
                   "run_shell_command(git)",
                   "run_shell_command(gh)",
+                  "run_shell_command(bash)",
+                  "run_shell_command(.github/scripts/update-comment.sh)",
                   "run_shell_command(make)"
                 ]
               }
