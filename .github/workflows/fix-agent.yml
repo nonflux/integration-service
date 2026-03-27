@@ -48,7 +48,11 @@ jobs:
               --jq '{ref: .head.ref, repo: .head.repo.full_name}')
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
             echo "trigger=human" >> "$GITHUB_OUTPUT"
-            echo "instruction=$INPUT_INSTRUCTION" >> "$GITHUB_OUTPUT"
+            {
+                echo "instruction<<EOF"
+                echo "$INPUT_INSTRUCTION"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             PR_NUMBER="${{ github.event.issue.number }}"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
@@ -56,9 +60,13 @@ jobs:
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
             PR_REPO=$(echo "$PR_DATA" | jq -r '.repo')
             # Extract instruction after /fix-agent
-            INSTRUCTION=$(echo "$COMMENT_BODY" | sed 's|^/fix-agent[[:space:]]*||')
+            INSTRUCTION=$(printf "%s\n" "$COMMENT_BODY" | sed 's|^/fix-agent[[:space:]]*||')
             echo "trigger=human" >> "$GITHUB_OUTPUT"
-            echo "instruction=$INSTRUCTION" >> "$GITHUB_OUTPUT"
+            {
+                echo "instruction<<EOF"
+                echo "$INSTRUCTION"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
             # Block if PR is from a fork
             if [ "$PR_REPO" != "${{ github.repository }}" ]; then
               echo "::error::Cannot run fix agent on fork PRs"
@@ -113,8 +121,8 @@ jobs:
             -H "Content-Type: application/json" \
             "https://modelarmor.${GCP_LOCATION}.rep.googleapis.com/v1/projects/${GCP_PROJECT_ID}/locations/${GCP_LOCATION}/templates/${MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt" \
             -d "$(jq -n '{user_prompt_data: {text: env.SCAN_INPUT}}')")
-          echo "$RESPONSE" | jq .
-          MATCH=$(echo "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
+          printf "%s\n" "$RESPONSE" | jq .
+          MATCH=$(printf "%s\n" "$RESPONSE" | jq -r '.sanitizationResult.filterMatchState // "UNKNOWN"')
           if [ "$MATCH" = "MATCH_FOUND" ]; then
             echo "::warning::Model Armor flagged content — agent will proceed with caution"
             echo "flagged=true" >> "$GITHUB_OUTPUT"
