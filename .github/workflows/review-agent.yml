@@ -30,17 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout base branch for trusted scripts
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Copy trusted scripts
-        run: |
-          mkdir -p /tmp/scripts
-          cp -r .github/scripts/* /tmp/scripts/
-
-      - name: Checkout PR branch
+      - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Authenticate to Google Cloud
@@ -53,7 +43,7 @@ jobs:
         run: |
           TEXT=$(gh pr view ${{ github.event.pull_request.number }} --json title,body --jq '.title + "\n" + (.body // "")')
           echo "$TEXT" > scan_input.txt
-          MATCH=$(/tmp/scripts/scan-model-armor.sh scan_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
+          MATCH=$(.github/scripts/scan-model-armor.sh scan_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
             echo "::error::Model Armor detected prompt injection"
             echo "detected=true" >> "$GITHUB_OUTPUT"
@@ -71,7 +61,7 @@ jobs:
         run: |
           MARKER="<!-- fullsend:review-agent -->"
           NEW_CONTENT="⚠️ **Prompt injection detected in PR title/body.** Review skipped by Model Armor. A human maintainer will review this PR."
-          /tmp/scripts/update-comment.sh "${{ github.repository }}" "${{ github.event.pull_request.number }}" "$MARKER" "$NEW_CONTENT"
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${{ github.event.pull_request.number }}" "$MARKER" "$NEW_CONTENT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -83,7 +73,7 @@ jobs:
           # Truncate to 50KB to stay within Model Armor payload limits
           DIFF=$(gh pr diff ${{ github.event.pull_request.number }} | head -n 1000)
           echo "$DIFF" > diff_input.txt
-          MATCH=$(/tmp/scripts/scan-model-armor.sh diff_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
+          MATCH=$(.github/scripts/scan-model-armor.sh diff_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
             echo "::warning::Model Armor flagged content in PR diff — review will proceed with caution"
             echo "flagged=true" >> "$GITHUB_OUTPUT"
@@ -182,7 +172,7 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
           # Check for existing comment with marker
-          /tmp/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$REVIEW_BODY"
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$REVIEW_BODY"
 
           # Submit review verdict
           if [ "$VERDICT" = "APPROVE" ]; then
