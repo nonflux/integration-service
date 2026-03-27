@@ -151,25 +151,15 @@ jobs:
             4. **Tests** — are new functions tested? Edge cases covered?
             5. **Kubernetes conventions** — proper error handling, status updates, RBAC markers?
 
-            Post your review as a persistent comment with the `<!-- fullsend:review-agent -->` marker.
-            If a previous comment with this marker exists, collapse its content into a
-            `<details>` block so the PR keeps a history of all reviews.
+            Before submitting your review, check for previous reviews from this bot:
+            `gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" --jq '[.[] | select(.user.login == "fullsend-reviewer[bot]")] | reverse | .[].body' 2>/dev/null`
+            If previous reviews exist, append them collapsed at the end of your review body:
+            `<details><summary><b>Previous review</b></summary>\n\n<previous review content>\n\n</details>`
+            Nest multiple previous reviews in successive `<details>` blocks.
 
-            Steps:
-            1. Check for an existing comment:
-               `COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | startswith("<!-- fullsend:review-agent -->")) | .id' | head -1)`
-            2. If COMMENT_ID exists, read its body and build an updated body:
-               - Start with `<!-- fullsend:review-agent -->`
-               - Your new review content
-               - Wrap the OLD content (everything after the marker line from the old body) in:
-                 `<details><summary><b>Previous review</b></summary>\n\n<old content>\n\n</details>`
-               Update: `gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="<new body>"`
-            3. If no existing comment, create one:
-               `gh pr comment ${{ github.event.pull_request.number }} --body "<!-- fullsend:review-agent -->\n<review>"`
-
-            Then submit the review verdict (needed to trigger the fix agent):
-            - `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "See review comment."`
-            - `gh pr review ${{ github.event.pull_request.number }} --approve --body "LGTM"`
+            Submit your review (with collapsed history in the body) using `gh pr review`:
+            - If changes are needed: `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<full review with collapsed history>"`
+            - If everything looks good: `gh pr review ${{ github.event.pull_request.number }} --approve --body "<full review with collapsed history>"`
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
