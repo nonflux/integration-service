@@ -213,8 +213,8 @@ jobs:
             Follow the fix-review-feedback skill steps to address all comments,
             run tests, commit, and push.
 
-            IMPORTANT: Follow the "Posting Comments" section in fix-review-feedback.md
-            for in-place comment updates using the <!-- fullsend:fix-agent --> marker.
+            After finishing, write a short status summary to `/tmp/fix-status.md` describing
+            what you fixed and any remaining issues. Do NOT post PR comments yourself.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
         env:
@@ -252,9 +252,37 @@ jobs:
             3. Run `make test` and `make lint` to verify
             4. Commit with a descriptive message and push
 
-            IMPORTANT: Follow the "Posting Comments" section in .gemini/commands/fix-review-feedback.md
-            for in-place comment updates using the <!-- fullsend:fix-agent --> marker.
+            After finishing, write a short status summary to `/tmp/fix-status.md` describing
+            what you fixed and any remaining issues. Do NOT post PR comments yourself.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Post fix status comment
+        if: steps.iteration.outputs.escalate != 'true' && always()
+        run: |
+          if [ ! -f /tmp/fix-status.md ]; then
+            echo "Fix agent did not produce a status file." > /tmp/fix-status.md
+          fi
+
+          STATUS_BODY=$(cat /tmp/fix-status.md)
+          MARKER="<!-- fullsend:fix-agent -->"
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+
+          # Check for existing comment with marker
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            OLD_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" --jq '.body')
+            OLD_CONTENT=$(echo "$OLD_BODY" | tail -n +2)
+            printf -v BODY '%s\n%s\n\n<details>\n<summary><b>Previous update</b></summary>\n\n%s\n\n</details>' \
+              "$MARKER" "$STATUS_BODY" "$OLD_CONTENT"
+            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY"
+          else
+            printf -v BODY '%s\n%s' "$MARKER" "$STATUS_BODY"
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
