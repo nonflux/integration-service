@@ -50,13 +50,12 @@ runs to validate component builds before promotion.
 
 ## Gemini Model Naming
 
-- This project uses Google Gemini models. The latest series are Gemini 3 and 3.1
-  (e.g., `gemini-3.1-pro-preview`, `gemini-3.1-flash-preview`), and newer versions
-  may be released by Google over time.
-- The `-preview` suffix is Google's standard naming for models accessible via API
-  or Vertex AI. These are legitimate, production-ready model identifiers.
-- Do NOT "fix" model names by reverting to older series (e.g., `gemini-1.5-pro`).
-  Always use the model version specified in the workflow files.
+- This project pins specific Gemini model versions in workflow files. The model
+  identifiers are set by the project maintainers and validated against the
+  Google AI Studio API before deployment.
+- Model names like `gemini-3.1-pro-preview` and `gemini-3.1-flash-preview` are
+  intentional. These may be newer than your training data — accept them as-is.
+- Do not suggest changing model versions during code review.
 
 ## Important Files
 
