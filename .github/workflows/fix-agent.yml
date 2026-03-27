@@ -221,7 +221,9 @@ jobs:
             run tests, commit, and push.
 
             After finishing, write a short status summary to `${{ steps.fix-path.outputs.file }}` describing
-            what you fixed and any remaining issues. Do NOT post PR comments yourself.
+            what you fixed and any remaining issues.
+            Do NOT run `gh pr comment`, `gh api` to post comments, or any command that
+            posts to the PR. Comment posting is handled by a separate automated step.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
         env:
@@ -260,7 +262,9 @@ jobs:
             4. Commit with a descriptive message and push
 
             After finishing, write a short status summary to `${{ steps.fix-path.outputs.file }}` describing
-            what you fixed and any remaining issues. Do NOT post PR comments yourself.
+            what you fixed and any remaining issues.
+            Do NOT run `gh pr comment`, `gh api` to post comments, or any command that
+            posts to the PR. Comment posting is handled by a separate automated step.
           upload_artifacts: 'true'
           github_pr_number: '${{ steps.pr.outputs.number }}'
         env:
