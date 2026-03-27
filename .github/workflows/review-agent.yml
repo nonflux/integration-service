@@ -4,6 +4,7 @@ on:
     types: [opened, synchronize]
 
 permissions:
+  actions: write
   contents: read
   pull-requests: write
   checks: write
@@ -17,6 +18,18 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - name: Cancel stale fix agents
+        run: |
+          # Cancel any in-progress fix agent runs for this PR to prevent
+          # stale fixes from being pushed after new code lands
+          gh api "repos/${{ github.repository }}/actions/workflows/fix-agent.yml/runs?status=in_progress&branch=${{ github.event.pull_request.head.ref }}" \
+            --jq '.workflow_runs[].id' | while read -r RUN_ID; do
+            echo "Cancelling stale fix agent run $RUN_ID"
+            gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/cancel" -X POST || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
