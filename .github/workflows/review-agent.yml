@@ -81,6 +81,10 @@ jobs:
           app-id: ${{ secrets.REVIEWER_APP_ID }}
           private-key: ${{ secrets.REVIEWER_APP_PRIVATE_KEY }}
 
+      - name: Configure gh CLI with reviewer token
+        if: steps.scan.outputs.detected != 'true'
+        run: echo "${{ steps.app-token.outputs.token }}" | gh auth login --with-token
+
       - name: Review pull request
         if: steps.scan.outputs.detected != 'true'
         uses: google-github-actions/run-gemini-cli@v0.1.21
