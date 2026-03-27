@@ -54,3 +54,7 @@ If you don't vendor dependencies, `go vet` will fail build.
 
 To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
 test coverage will be reported at the end, once all the tests have been executed.
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request for any improvements.
