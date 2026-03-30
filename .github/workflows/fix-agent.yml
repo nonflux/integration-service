@@ -307,11 +307,10 @@ jobs:
             echo "Fix agent did not produce a status file." > ${{ steps.fix-path.outputs.file }}
           fi
 
-          STATUS_BODY=$(cat ${{ steps.fix-path.outputs.file }})
           MARKER="<!-- fullsend:fix-agent -->"
           PR_NUMBER="${{ steps.pr.outputs.number }}"
 
-          # Check for existing comment with marker
-          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$STATUS_BODY"
+          # Pass body via file to avoid shell escaping issues with multi-line content
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" @${{ steps.fix-path.outputs.file }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

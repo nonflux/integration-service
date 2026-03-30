@@ -168,13 +168,13 @@ jobs:
 
           # Extract verdict and review body
           VERDICT=$(grep -oP '(?<=VERDICT: )\S+' ${{ steps.review-path.outputs.file }} | tail -1)
-          REVIEW_BODY=$(sed '/^VERDICT: /d' ${{ steps.review-path.outputs.file }})
+          sed '/^VERDICT: /d' ${{ steps.review-path.outputs.file }} > /tmp/review-body.txt
 
           MARKER="<!-- fullsend:review-agent -->"
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
-          # Check for existing comment with marker
-          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$REVIEW_BODY"
+          # Post or update review comment (pass body via file to avoid shell escaping issues)
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" @/tmp/review-body.txt
 
           # Submit review verdict
           if [ "$VERDICT" = "APPROVE" ]; then
