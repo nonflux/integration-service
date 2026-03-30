@@ -259,7 +259,6 @@ jobs:
             Do NOT run `gh pr comment`, `gh api` to post comments, or any command that
             posts to the PR. Comment posting is handled by a separate automated step.
           upload_artifacts: 'true'
-          github_pr_number: '${{ steps.pr.outputs.number }}'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -300,7 +299,6 @@ jobs:
             Do NOT run `gh pr comment`, `gh api` to post comments, or any command that
             posts to the PR. Comment posting is handled by a separate automated step.
           upload_artifacts: 'true'
-          github_pr_number: '${{ steps.pr.outputs.number }}'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 

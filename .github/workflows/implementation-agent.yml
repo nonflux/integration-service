@@ -122,7 +122,6 @@ jobs:
             IMPORTANT: Follow the "Posting Comments" section in implement-from-issue.md
             for in-place comment updates using the <!-- fullsend:implementation-agent --> marker.
           upload_artifacts: 'true'
-          github_issue_number: '${{ github.event.issue.number }}'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
