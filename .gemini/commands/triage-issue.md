@@ -1,29 +1,38 @@
 # Triage Issue
 
-Classify a GitHub issue and apply labels.
+Classify a GitHub issue and write triage results to a file.
 
 ## Steps
 
-1. Read the issue title, body, and comments from `issue_body.txt`
-2. Determine the type: `kind/bug`, `kind/feature`, `kind/enhancement`, `kind/docs`, `kind/chore`
-3. Determine the area: `area/controller`, `area/api`, `area/gitops`, `area/tekton`, `area/test`
-4. Determine priority: `priority/critical`, `priority/high`, `priority/medium`, `priority/low`
-5. Apply labels using `gh issue edit <number> --add-label <labels>`
-6. If the issue has enough detail for implementation, also add `ready-for-implementation`
-7. If the issue lacks detail, post a comment asking for clarification
-8. Post a triage summary comment on the issue (see Posting Comments below)
+1. Read the pre-fetched issue content from the file path provided in the prompt
+2. Read the codebase as needed to understand the issue context
+3. Determine the type: `kind/bug`, `kind/feature`, `kind/enhancement`, `kind/docs`, `kind/chore`
+4. Determine the area: `area/controller`, `area/api`, `area/gitops`, `area/tekton`, `area/test`
+5. Determine priority: `priority/critical`, `priority/high`, `priority/medium`, `priority/low`
+6. If the issue has enough detail for implementation, include `ready-for-implementation` in labels
+7. Write the triage output file (path provided in the prompt) in this exact format:
 
-## Posting Comments (In-Place Update with History)
-
-When posting status updates on issues or PRs, use the provided update-comment script:
-
-```bash
-.github/scripts/update-comment.sh "{owner}/{repo}" "<number>" "<!-- fullsend:triage-agent -->" "<your new content here>"
 ```
+LABELS: kind/bug,area/controller,priority/high,ready-for-implementation
+---
+### Triage Summary
+- **Type**: kind/bug
+- **Area**: area/controller
+- **Priority**: priority/high
+- **Ready for Implementation**: yes/no
+
+<your detailed analysis here>
+```
+
+The first line MUST start with `LABELS:` followed by a comma-separated list.
+The `---` separator MUST appear on its own line after the labels.
+Everything after `---` is the triage summary in markdown.
 
 ## Constraints
 
+- Do NOT use `gh` commands — you do not have access to the GitHub CLI
+- Do NOT post comments or apply labels — a later workflow step handles that
 - Do NOT modify any code files
 - Do NOT create branches or PRs
-- Only add labels and post comments
+- Only read files and write the triage output file
 - If you cannot determine a category, use the most general option
