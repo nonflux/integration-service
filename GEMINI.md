@@ -65,7 +65,7 @@ runs to validate component builds before promotion.
 - This project pins specific Gemini model versions in workflow files. The model
   identifiers are set by the project maintainers and validated against the
   Google AI Studio API before deployment.
-- Model names like `gemini-3.1-pro-preview` and `gemini-3.1-flash-preview` are
+- Model names like `gemini-3.1-pro-preview` and `gemini-3-flash-preview` are
   intentional. These may be newer than your training data — accept them as-is.
 - Do not suggest changing model versions during code review.
 

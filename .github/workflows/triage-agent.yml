@@ -60,7 +60,7 @@ jobs:
         uses: google-github-actions/run-gemini-cli@v0.1.21
         with:
           gemini_api_key: ${{ secrets.AI_API_KEY }}
-          gemini_model: gemini-3.1-flash-preview
+          gemini_model: gemini-3-flash-preview
           settings: |
             {
               "tools": {
