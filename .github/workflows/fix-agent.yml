@@ -66,10 +66,11 @@ jobs:
               exit 1
             fi
             echo "trigger=human" >> "$GITHUB_OUTPUT"
+            DELIMITER=$(openssl rand -hex 8)
             {
-                echo "instruction<<EOF"
+                echo "instruction<<$DELIMITER"
                 echo "$INPUT_INSTRUCTION"
-                echo "EOF"
+                echo "$DELIMITER"
               } >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             PR_NUMBER="${{ github.event.issue.number }}"
@@ -82,10 +83,11 @@ jobs:
             INSTRUCTION="${COMMENT_BODY#/fix-agent}"
             INSTRUCTION="${INSTRUCTION# }"
             echo "trigger=human" >> "$GITHUB_OUTPUT"
+            DELIMITER=$(openssl rand -hex 8)
             {
-                echo "instruction<<EOF"
+                echo "instruction<<$DELIMITER"
                 echo "$INSTRUCTION"
-                echo "EOF"
+                echo "$DELIMITER"
               } >> "$GITHUB_OUTPUT"
             # Block if PR is from a fork
             if [ "$PR_REPO" != "${{ github.repository }}" ]; then
@@ -94,8 +96,8 @@ jobs:
             fi
           else
             PR_NUMBER="${{ github.event.pull_request.number }}"
-            PR_REF="${{ github.event.pull_request.head.ref }}"
-            PR_BASE="${{ github.event.pull_request.base.ref }}"
+            PR_REF="${HEAD_REF}"
+            PR_BASE="${BASE_REF}"
             echo "trigger=bot" >> "$GITHUB_OUTPUT"
           fi
           # Validate PR targets the configured branch
@@ -111,6 +113,8 @@ jobs:
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
           INPUT_INSTRUCTION: ${{ inputs.instruction }}
           TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
 
       - name: React to command
         if: steps.pr.outputs.skip != 'true' && steps.pr.outputs.trigger == 'human'
@@ -191,7 +195,7 @@ jobs:
           OWNERS=${OWNERS:-"repository maintainers"}
           MARKER="<!-- fullsend:fix-agent -->"
           NEW_CONTENT="⚠️ ${{ steps.iteration.outputs.reason }}. Escalating to human review. ${OWNERS}"
-          .github/scripts/update-comment.sh "${{ github.repository }}" "${PR_NUMBER}" "$MARKER" "$NEW_CONTENT"
+          .github/scripts/update-comment.sh "${{ github.repository }}" "${{ steps.pr.outputs.number }}" "$MARKER" "$NEW_CONTENT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -17,7 +17,7 @@ gh() {
     echo -e "<!-- marker -->\nOld content"
   elif [[ "$*" == *"repos/test/repo/issues/comments/123"* && "$*" == *"-X PATCH"* ]]; then
     echo "PATCH called" >&2
-  elif [[ "$*" == *"issue comment 1 --repo test/repo"* ]]; then
+  elif [[ "$*" == *"repos/test/repo/issues/1/comments"* && "$*" == *"-X POST"* ]]; then
     echo "POST called" >&2
   fi
 }

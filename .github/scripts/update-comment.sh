@@ -31,7 +31,7 @@ else
   NEW_CONTENT="$RAW_CONTENT"
 fi
 
-COMMENT_ID=$(gh api "repos/${REPO}/issues/${NUMBER}/comments" \
+COMMENT_ID=$(gh api --paginate "repos/${REPO}/issues/${NUMBER}/comments" \
   --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
 
 if [ -n "$COMMENT_ID" ]; then

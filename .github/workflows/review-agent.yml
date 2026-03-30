@@ -24,13 +24,14 @@ jobs:
         run: |
           # Cancel any in-progress fix agent runs for this PR to prevent
           # stale fixes from being pushed after new code lands
-          gh api "repos/${{ github.repository }}/actions/workflows/fix-agent.yml/runs?status=in_progress&branch=${{ github.event.pull_request.head.ref }}" \
+          gh api "repos/${{ github.repository }}/actions/workflows/fix-agent.yml/runs?status=in_progress&branch=${HEAD_REF}" \
             --jq '.workflow_runs[].id' | while read -r RUN_ID; do
             echo "Cancelling stale fix agent run $RUN_ID"
             gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/cancel" -X POST || true
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
 
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -72,8 +73,7 @@ jobs:
         id: diff-scan
         run: |
           # Scan the PR diff for injection payloads embedded in code
-          # Truncate to 50KB to stay within Model Armor payload limits
-          DIFF=$(gh pr diff ${{ github.event.pull_request.number }} | head -n 1000)
+          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
           printf "%s\n" "$DIFF" > diff_input.txt
           MATCH=$(.github/scripts/scan-model-armor.sh diff_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
@@ -110,7 +110,7 @@ jobs:
           echo "desc=$DESC_FILE" >> "$GITHUB_OUTPUT"
 
           # Pre-fetch PR data so Gemini doesn't need gh access
-          gh pr diff ${{ github.event.pull_request.number }} | head -n 1000 > "$DIFF_FILE"
+          gh pr diff ${{ github.event.pull_request.number }} > "$DIFF_FILE"
           gh pr view ${{ github.event.pull_request.number }} --json title,body --jq '.title + "\n\n" + (.body // "")' > "$DESC_FILE"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
