@@ -33,6 +33,18 @@ runs to validate component builds before promotion.
 - Always reference issue number in PR body with `Closes #<number>`
 - Sign off commits with `-s` flag
 
+## Branching Model
+
+- **Target branch**: All agent-created PRs target the branch defined by the
+  `TARGET_BRANCH` environment variable. This is configured via the repository
+  variable `vars.TARGET_BRANCH`, falling back to the repository's default branch.
+- **Feature branches**: Create `agent/<issue-number>-<short-desc>` branches
+  from the target branch: `git checkout -b agent/... origin/${TARGET_BRANCH}`
+- **PR base**: Always use `gh pr create --base "${TARGET_BRANCH}"` when opening PRs.
+  Never omit the `--base` flag.
+- **Promotion PRs**: PRs from the target branch to the default branch (e.g.,
+  `dev` -> `main`) are human-managed. Agents do not review or modify promotion PRs.
+
 ## Testing Requirements
 
 - Unit tests required for new functions

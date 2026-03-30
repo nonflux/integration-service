@@ -6,7 +6,8 @@ Read a GitHub issue and implement the requested changes.
 
 1. Read the full issue from `issue_body.txt` in the root directory.
 2. Understand what needs to be done — read referenced files if mentioned
-3. Create a branch: `git checkout -b agent/<issue-number>-<short-desc>`
+3. Create a branch from the target branch: `git checkout -b agent/<issue-number>-<short-desc> origin/${TARGET_BRANCH}`
+   - The target branch is provided via the `TARGET_BRANCH` environment variable
 4. Plan the implementation:
    - Identify which files to modify or create
    - Check existing patterns in similar files
@@ -15,7 +16,8 @@ Read a GitHub issue and implement the requested changes.
 6. Write or update tests for new/changed functionality
 7. Stage and commit: `git add -A && git commit -s -m "<type>: <description>"`
 8. Push branch: `git push origin agent/<issue-number>-<short-desc>`
-9. Open PR: `gh pr create --title "<type>: <description>" --body "..."`
+9. Open PR: `gh pr create --base "${TARGET_BRANCH}" --title "<type>: <description>" --body "..."`
+    - ALWAYS include `--base "${TARGET_BRANCH}"` — do NOT omit this flag
     - PR body must include: what changed, why, `Closes #<issue-number>`
 
 ## Posting Comments (In-Place Update with History)

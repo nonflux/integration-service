@@ -16,6 +16,8 @@ jobs:
   implement:
     if: github.event.label.name == 'ready-for-implementation'
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ vars.TARGET_BRANCH || github.event.repository.default_branch }}
     steps:
       - name: Generate agent app token
         id: app-token
@@ -27,6 +29,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -105,12 +108,17 @@ jobs:
 
             Use `gh issue view ${{ github.event.issue.number }}` to read the full issue.
 
+            The target branch for this repository is: ${{ env.TARGET_BRANCH }}
+
             Follow the implement-from-issue skill steps:
-            1. Create branch agent/${{ github.event.issue.number }}-<short-desc>
+            1. Create branch from the target branch: `git checkout -b agent/${{ github.event.issue.number }}-<short-desc> origin/${{ env.TARGET_BRANCH }}`
             2. Implement the changes
             3. Run `make test` and `make lint`
-            4. Commit, push, and open a PR with `gh pr create`
+            4. Commit, push, and open a PR: `gh pr create --base ${{ env.TARGET_BRANCH }}`
             5. PR body must include: Closes #${{ github.event.issue.number }}
+
+            IMPORTANT: Always use `--base ${{ env.TARGET_BRANCH }}` when creating the PR.
+            Do NOT omit the --base flag.
 
             IMPORTANT: Follow the "Posting Comments" section in implement-from-issue.md
             for in-place comment updates using the <!-- fullsend:implementation-agent --> marker.
@@ -118,3 +126,4 @@ jobs:
           github_issue_number: '${{ github.event.issue.number }}'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}

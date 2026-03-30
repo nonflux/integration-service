@@ -18,3 +18,5 @@ Address PR review comments and push fixes.
 - Do not make unrelated changes in the same commit
 - If a comment is unclear, reply asking for clarification
 - Preserve existing test coverage
+- The PR targets the branch specified by the `TARGET_BRANCH` environment variable
+- When referencing base branch files, use `origin/${TARGET_BRANCH}` not a hardcoded branch name

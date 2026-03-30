@@ -28,7 +28,8 @@ jobs:
         github.event_name == 'pull_request_review' &&
         github.event.review.state == 'changes_requested' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.review.user.login == 'fullsend-reviewer[bot]'
+        github.event.review.user.login == 'fullsend-reviewer[bot]' &&
+        github.event.pull_request.base.ref == (vars.TARGET_BRANCH || github.event.repository.default_branch)
       ) || (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
@@ -38,6 +39,8 @@ jobs:
         github.event_name == 'workflow_dispatch'
       )
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ vars.TARGET_BRANCH || github.event.repository.default_branch }}
     steps:
       - name: Resolve PR context
         id: pr
@@ -45,8 +48,9 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             PR_NUMBER="$INPUT_PR_NUMBER"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
-              --jq '{ref: .head.ref, repo: .head.repo.full_name}')
+              --jq '{ref: .head.ref, repo: .head.repo.full_name, base: .base.ref}')
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
+            PR_BASE=$(echo "$PR_DATA" | jq -r '.base')
             echo "trigger=human" >> "$GITHUB_OUTPUT"
             {
                 echo "instruction<<EOF"
@@ -56,9 +60,10 @@ jobs:
           elif [ "${{ github.event_name }}" = "issue_comment" ]; then
             PR_NUMBER="${{ github.event.issue.number }}"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
-              --jq '{ref: .head.ref, repo: .head.repo.full_name}')
+              --jq '{ref: .head.ref, repo: .head.repo.full_name, base: .base.ref}')
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
             PR_REPO=$(echo "$PR_DATA" | jq -r '.repo')
+            PR_BASE=$(echo "$PR_DATA" | jq -r '.base')
             # Extract instruction after /fix-agent
             INSTRUCTION=$(printf "%s\n" "$COMMENT_BODY" | sed 's|^/fix-agent[[:space:]]*||')
             echo "trigger=human" >> "$GITHUB_OUTPUT"
@@ -75,7 +80,13 @@ jobs:
           else
             PR_NUMBER="${{ github.event.pull_request.number }}"
             PR_REF="${{ github.event.pull_request.head.ref }}"
+            PR_BASE="${{ github.event.pull_request.base.ref }}"
             echo "trigger=bot" >> "$GITHUB_OUTPUT"
+          fi
+          # Validate PR targets the configured branch
+          if [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$TARGET_BRANCH" ]; then
+            echo "::notice::PR #$PR_NUMBER targets '$PR_BASE', not '$TARGET_BRANCH'. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "ref=$PR_REF" >> "$GITHUB_OUTPUT"
@@ -84,9 +95,10 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
           INPUT_INSTRUCTION: ${{ inputs.instruction }}
+          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
 
       - name: React to command
-        if: steps.pr.outputs.trigger == 'human'
+        if: steps.pr.outputs.skip != 'true' && steps.pr.outputs.trigger == 'human'
         run: |
           gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
             -f content='+1' || true
@@ -94,6 +106,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate agent app token
+        if: steps.pr.outputs.skip != 'true'
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -101,6 +114,7 @@ jobs:
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 
       - name: Checkout PR branch
+        if: steps.pr.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.pr.outputs.ref }}
@@ -108,11 +122,13 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Authenticate to Google Cloud
+        if: steps.pr.outputs.skip != 'true'
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Scan input with Model Armor
+        if: steps.pr.outputs.skip != 'true'
         id: scan
         run: |
           # Scan the triggering content (review body or command comment)
@@ -137,7 +153,7 @@ jobs:
 
       - name: Check iteration count
         id: iteration
-        if: steps.pr.outputs.trigger == 'bot'
+        if: steps.pr.outputs.skip != 'true' && steps.pr.outputs.trigger == 'bot'
         run: |
           COUNT=$(gh api repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/reviews \
             --jq '[.[] | select(.user.login == "fullsend-reviewer[bot]" and .state == "CHANGES_REQUESTED")] | length' || echo "0")
@@ -165,26 +181,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go
-        if: steps.iteration.outputs.escalate != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.iteration.outputs.escalate != 'true'
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Configure git
-        if: steps.iteration.outputs.escalate != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.iteration.outputs.escalate != 'true'
         run: |
           git config user.name "fullsend-agent[bot]"
           git config user.email "fullsend-agent[bot]@users.noreply.github.com"
 
       - name: Generate fix output path
-        if: steps.iteration.outputs.escalate != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.iteration.outputs.escalate != 'true'
         id: fix-path
         run: |
           FIX_FILE="/tmp/fix-status-${GITHUB_RUN_ID}-$(openssl rand -hex 8).md"
           echo "file=$FIX_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Fix review feedback
-        if: steps.pr.outputs.trigger == 'bot' && steps.iteration.outputs.escalate != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.pr.outputs.trigger == 'bot' && steps.iteration.outputs.escalate != 'true'
         uses: google-github-actions/run-gemini-cli@v0.1.21
         with:
           gemini_api_key: ${{ secrets.AI_API_KEY }}
@@ -229,7 +245,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Fix from human command
-        if: steps.pr.outputs.trigger == 'human'
+        if: steps.pr.outputs.skip != 'true' && steps.pr.outputs.trigger == 'human'
         uses: google-github-actions/run-gemini-cli@v0.1.21
         with:
           gemini_api_key: ${{ secrets.AI_API_KEY }}
@@ -270,7 +286,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Post fix status comment
-        if: steps.iteration.outputs.escalate != 'true' && !cancelled()
+        if: steps.pr.outputs.skip != 'true' && steps.iteration.outputs.escalate != 'true' && !cancelled()
         run: |
           if [ ! -f ${{ steps.fix-path.outputs.file }} ]; then
             echo "Fix agent did not produce a status file." > ${{ steps.fix-path.outputs.file }}
