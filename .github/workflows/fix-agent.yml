@@ -45,12 +45,26 @@ jobs:
       - name: Resolve PR context
         id: pr
         run: |
+          # Validate TARGET_BRANCH format
+          if [ -n "$TARGET_BRANCH" ] && ! [[ "$TARGET_BRANCH" =~ ^[a-zA-Z0-9._/-]+$ ]]; then
+            echo "::error::Invalid TARGET_BRANCH name: $TARGET_BRANCH"
+            exit 1
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -z "$INPUT_PR_NUMBER" ] || ! [[ "$INPUT_PR_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid PR number: $INPUT_PR_NUMBER"
+              exit 1
+            fi
             PR_NUMBER="$INPUT_PR_NUMBER"
             PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" \
               --jq '{ref: .head.ref, repo: .head.repo.full_name, base: .base.ref}')
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
+            PR_REPO=$(echo "$PR_DATA" | jq -r '.repo')
             PR_BASE=$(echo "$PR_DATA" | jq -r '.base')
+            if [ "$PR_REPO" != "${{ github.repository }}" ]; then
+              echo "::error::Cannot run fix agent on fork PRs"
+              exit 1
+            fi
             echo "trigger=human" >> "$GITHUB_OUTPUT"
             {
                 echo "instruction<<EOF"
@@ -64,8 +78,9 @@ jobs:
             PR_REF=$(echo "$PR_DATA" | jq -r '.ref')
             PR_REPO=$(echo "$PR_DATA" | jq -r '.repo')
             PR_BASE=$(echo "$PR_DATA" | jq -r '.base')
-            # Extract instruction after /fix-agent
-            INSTRUCTION=$(printf "%s\n" "$COMMENT_BODY" | sed 's|^/fix-agent[[:space:]]*||')
+            # Extract instruction after /fix-agent using parameter expansion
+            INSTRUCTION="${COMMENT_BODY#/fix-agent}"
+            INSTRUCTION="${INSTRUCTION# }"
             echo "trigger=human" >> "$GITHUB_OUTPUT"
             {
                 echo "instruction<<EOF"
@@ -146,7 +161,7 @@ jobs:
             echo "flagged=false" >> "$GITHUB_OUTPUT"
           fi
         env:
-          SCAN_INPUT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || github.event.review.body }}
+          SCAN_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.instruction || (github.event_name == 'issue_comment' && github.event.comment.body || github.event.review.body) }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           MODEL_ARMOR_TEMPLATE: ${{ secrets.MODEL_ARMOR_TEMPLATE }}
