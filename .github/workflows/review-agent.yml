@@ -44,8 +44,7 @@ jobs:
       - name: Scan PR for prompt injection
         id: scan
         run: |
-          TEXT=$(gh pr view ${{ github.event.pull_request.number }} --json title,body --jq '.title + "\n" + (.body // "")')
-          printf "%s\n" "$TEXT" > scan_input.txt
+          gh pr view ${{ github.event.pull_request.number }} --json title,body --jq '.title + "\n" + (.body // "")' > scan_input.txt
           MATCH=$(.github/scripts/scan-model-armor.sh scan_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
             echo "::error::Model Armor detected prompt injection"
@@ -73,8 +72,7 @@ jobs:
         id: diff-scan
         run: |
           # Scan the PR diff for injection payloads embedded in code
-          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
-          printf "%s\n" "$DIFF" > diff_input.txt
+          gh pr diff ${{ github.event.pull_request.number }} > diff_input.txt
           MATCH=$(.github/scripts/scan-model-armor.sh diff_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
             echo "::warning::Model Armor flagged content in PR diff — review will proceed with caution"

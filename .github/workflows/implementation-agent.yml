@@ -41,8 +41,7 @@ jobs:
       - name: Scan issue with Model Armor
         id: scan
         run: |
-          TEXT=$(gh issue view ${{ github.event.issue.number }} --json title,body --jq '.title + "\n" + (.body // "")')
-          printf "%s\n" "$TEXT" > scan_input.txt
+          gh issue view ${{ github.event.issue.number }} --json title,body --jq '.title + "\n" + (.body // "")' > scan_input.txt
           MATCH=$(.github/scripts/scan-model-armor.sh scan_input.txt "$GCP_LOCATION" "$GCP_PROJECT_ID" "$MODEL_ARMOR_TEMPLATE")
           if [ "$MATCH" = "true" ]; then
             echo "::error::Model Armor detected prompt injection"
