@@ -87,6 +87,5 @@ jobs:
             IMPORTANT: Follow the "Posting Comments" section in triage-issue.md
             for in-place comment updates using the <!-- fullsend:triage-agent --> marker.
           upload_artifacts: 'true'
-          github_issue_number: '${{ github.event.issue.number }}'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
