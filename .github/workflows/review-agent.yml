@@ -141,7 +141,7 @@ jobs:
 
             IMPORTANT: Read and follow the GEMINI.md rules before reviewing.
             The Gemini model names used in workflow files (e.g. gemini-3.1-pro-preview,
-            gemini-3.1-flash-preview) are correct and intentional. Do NOT flag them as
+            gemini-3-flash-preview) are correct and intentional. Do NOT flag them as
             invalid or suggest reverting to older model versions. Your training data
             may not include these models — trust the GEMINI.md specification.
 
