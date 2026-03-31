@@ -135,7 +135,7 @@ jobs:
           sed -i 's/\r$//' "$TRIAGE_FILE"
           
           # Extract labels safely, ignoring potential markdown codeblock wrappers
-          LABELS=$(grep '^LABELS:' "$TRIAGE_FILE" | head -1 | sed 's/^LABELS:[[:space:]]*//')
+          LABELS=$(sed -n 's/^LABELS:[[:space:]]*//p' "$TRIAGE_FILE" | head -1)
           # Extract summary (everything after the --- separator)
           SUMMARY=$(sed '1,/^---$/d' "$TRIAGE_FILE")
 
