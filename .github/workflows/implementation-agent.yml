@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   implement:
-    if: github.event.label.name == 'ready-for-implementation'
+    if: >-
+      github.event.label.name == 'ready-for-implementation' &&
+      !github.event.issue.pull_request
     runs-on: ubuntu-latest
     env:
       TARGET_BRANCH: ${{ vars.TARGET_BRANCH || github.event.repository.default_branch }}

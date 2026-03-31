@@ -142,6 +142,17 @@ jobs:
           if [ -z "$LABELS" ]; then
             echo "::warning::No labels found in triage output"
           else
+            # Ensure ready-for-implementation is the last label
+            TMP_LABELS=",${LABELS},"
+            if [[ "$TMP_LABELS" == *",ready-for-implementation,"* ]]; then
+              CLEANED="${TMP_LABELS//,ready-for-implementation,/,}"
+              CLEANED="${CLEANED:1:-1}"
+              if [ -z "$CLEANED" ]; then
+                LABELS="ready-for-implementation"
+              else
+                LABELS="${CLEANED},ready-for-implementation"
+              fi
+            fi
             echo "Applying labels: $LABELS"
             gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
           fi
