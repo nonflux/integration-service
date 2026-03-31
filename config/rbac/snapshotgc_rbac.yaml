@@ -11,6 +11,20 @@ metadata:
   name: snapshot-garbage-collector
 rules:
 - apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - get
+  - list
+  - patch
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns/finalizers
+  verbs:
+  - update
+- apiGroups:
   - appstudio.redhat.com
   resources:
   - releases

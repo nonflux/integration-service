@@ -515,6 +515,7 @@ func deleteSnapshots(
 		err := helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(context.Background(), cl, helpers.IntegrationLogger{Logger: logger}, snap, helpers.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			logger.Error(err, "Failed to remove finalizer from integration pipelineruns of snapshot.", "snapshot.name", snap.Name)
+			continue
 		}
 
 		err = cl.Delete(context.Background(), &snap)

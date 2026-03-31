@@ -1463,6 +1463,9 @@ func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.Int
 			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
 			patch := client.MergeFrom(plr.DeepCopy())
 			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
+			if plr.Annotations == nil {
+				plr.Annotations = map[string]string{}
+			}
 			plr.Annotations[PRGroupCancelledAnnotation] = "true"
 
 			err = c.Patch(ctx, &plr, patch)

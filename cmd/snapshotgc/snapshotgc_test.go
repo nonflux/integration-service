@@ -11,9 +11,11 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
 	core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -701,6 +703,82 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snapsRemaining.Items).To(HaveLen(1))
 			Expect(snapsRemaining.Items[0].Name).To(Equal("no-del"))
+		})
+
+		It("Removes finalizers from associated PipelineRuns before deleting the snapshot", func() {
+			snap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "snap-with-plr",
+				},
+			}
+			plr := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "plr-1",
+					Labels: map[string]string{
+						"appstudio.openshift.io/snapshot": "snap-with-plr",
+					},
+					Finalizers: []string{helpers.IntegrationPipelineRunFinalizer},
+				},
+			}
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*snap},
+					},
+					&tektonv1.PipelineRunList{
+						Items: []tektonv1.PipelineRun{*plr},
+					}).Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{*snap}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapsRemaining.Items).To(BeEmpty())
+
+			plrsRemaining := &tektonv1.PipelineRunList{}
+			err = cl.List(context.Background(), plrsRemaining)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(plrsRemaining.Items).To(HaveLen(1))
+			Expect(plrsRemaining.Items[0].Finalizers).To(BeEmpty())
+		})
+
+		It("Continues to next snapshot and does not delete when finalizer removal fails", func() {
+			snap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "snap-with-plr",
+				},
+			}
+
+			// A pipelinerun without namespace while client has no permissions or it fails?
+			// The fake client will return error on Update if we use an interceptor, but wait
+			// we can use gomonkey to mock helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot.
+			// Or we just add a mock for the client, but the easiest is using gomonkey.
+
+			patches := gomonkey.ApplyFunc(
+				helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot,
+				func(ctx context.Context, c client.Client, logger helpers.IntegrationLogger, snapshot applicationapiv1alpha1.Snapshot, finalizer string) error {
+					return errors.New("failed to remove finalizer")
+				})
+			defer patches.Reset()
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*snap},
+					}).Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{*snap}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			// Snapshot shouldn't be deleted
+			Expect(snapsRemaining.Items).To(HaveLen(1))
 		})
 
 		It("Handles all snapshots to be removed and continues on failure", func() {
