@@ -55,6 +55,23 @@ jobs:
           app-id: ${{ secrets.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 
+      - name: Prepare triage inputs
+        if: steps.scan.outputs.detected != 'true'
+        id: triage-path
+        run: |
+          HASH=$(openssl rand -hex 8)
+          ISSUE_FILE="/tmp/issue-${GITHUB_RUN_ID}-${HASH}.txt"
+          TRIAGE_FILE="/tmp/triage-${GITHUB_RUN_ID}-${HASH}.md"
+          echo "issue=$ISSUE_FILE" >> "$GITHUB_OUTPUT"
+          echo "file=$TRIAGE_FILE" >> "$GITHUB_OUTPUT"
+
+          # Pre-fetch issue data so Gemini doesn't need gh access
+          gh issue view ${{ github.event.issue.number }} --json title,body,labels \
+            --jq '"# " + .title + "\n\n" + (.body // "") + "\n\n## Existing Labels\n" + ([.labels[].name] | if length == 0 then "none" else join(", ") end)' \
+            > "$ISSUE_FILE"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Triage issue
         if: steps.scan.outputs.detected != 'true'
         uses: google-github-actions/run-gemini-cli@v0.1.21
@@ -66,9 +83,7 @@ jobs:
               "tools": {
                 "core": [
                   "read_file",
-                  "run_shell_command(gh)",
                   "run_shell_command(bash)",
-                  "run_shell_command(.github/scripts/update-comment.sh)",
                   "run_shell_command(echo)"
                 ]
               }
@@ -79,13 +94,65 @@ jobs:
 
             Triage GitHub issue #${{ github.event.issue.number }}.
 
-            Issue title: "${{ github.event.issue.title }}"
+            Read the issue content from `${{ steps.triage-path.outputs.issue }}`.
 
-            Use `gh issue view ${{ github.event.issue.number }}` to read the full issue body.
-            Then follow the triage-issue skill steps to classify and label it.
+            Classify the issue and write your triage output to
+            `${{ steps.triage-path.outputs.file }}`.
 
-            IMPORTANT: Follow the "Posting Comments" section in triage-issue.md
-            for in-place comment updates using the <!-- fullsend:triage-agent --> marker.
+            The output file MUST follow this exact format:
+
+            ```
+            LABELS: <comma-separated list of labels to add>
+            ---
+            <your triage summary in markdown>
+            ```
+
+            Example:
+            ```
+            LABELS: kind/bug,area/controller,priority/high,ready-for-implementation
+            ---
+            ### Triage Summary
+            - **Type**: kind/bug
+            - **Area**: area/controller
+            ...
+            ```
+
+            Do NOT use `gh` commands — you do not have access.
+            Do NOT post comments — a later step handles that.
+            Only read files and write the triage output file.
           upload_artifacts: 'true'
+
+      - name: Apply triage results
+        if: steps.scan.outputs.detected != 'true'
+        run: |
+          TRIAGE_FILE="${{ steps.triage-path.outputs.file }}"
+          if [ ! -f "$TRIAGE_FILE" ]; then
+            echo "::error::Triage agent did not produce $TRIAGE_FILE"
+            exit 1
+          fi
+
+          # Sanitize line endings first
+          sed -i 's/\r$//' "$TRIAGE_FILE"
+          
+          # Extract labels safely, ignoring potential markdown codeblock wrappers
+          LABELS=$(sed -n 's/^LABELS:[[:space:]]*//p' "$TRIAGE_FILE" | head -1)
+          # Extract summary (everything after the --- separator)
+          SUMMARY=$(sed '1,/^---$/d' "$TRIAGE_FILE")
+
+          if [ -z "$LABELS" ]; then
+            echo "::warning::No labels found in triage output"
+          else
+            echo "Applying labels: $LABELS"
+            gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
+          fi
+
+          if [ -z "$SUMMARY" ]; then
+            echo "::warning::No summary found in triage output"
+          else
+            printf "%s\n" "$SUMMARY" > /tmp/triage-summary.txt
+            MARKER="<!-- fullsend:triage-agent -->"
+            .github/scripts/update-comment.sh "${{ github.repository }}" \
+              "${{ github.event.issue.number }}" "$MARKER" @/tmp/triage-summary.txt
+          fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
