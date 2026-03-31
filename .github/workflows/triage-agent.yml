@@ -146,7 +146,8 @@ jobs:
             TMP_LABELS=",${LABELS},"
             if [[ "$TMP_LABELS" == *",ready-for-implementation,"* ]]; then
               CLEANED="${TMP_LABELS//,ready-for-implementation,/,}"
-              CLEANED="${CLEANED:1:-1}"
+              CLEANED="${CLEANED#,}"
+              CLEANED="${CLEANED%,}"
               if [ -z "$CLEANED" ]; then
                 LABELS="ready-for-implementation"
               else
