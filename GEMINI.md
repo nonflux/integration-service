@@ -23,6 +23,8 @@ runs to validate component builds before promotion.
 - Use controller-runtime conventions for reconcilers
 - Error handling: wrap errors with `fmt.Errorf("context: %w", err)`
 - Logging: use controller-runtime `log.FromContext(ctx)`
+- Install pre-commit hooks: `pre-commit install`
+- Run `pre-commit run --all-files` before submitting any changes
 - Run `make test` before committing
 - Run `make lint` for style checks
 
