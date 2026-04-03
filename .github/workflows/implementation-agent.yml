@@ -134,15 +134,17 @@ jobs:
         if: steps.scan.outputs.detected != 'true'
         id: context
         run: |
+          mkdir -p .agent-context
+
           # Issue body
           gh issue view "$ISSUE_NUMBER" --json title,body,labels \
             --jq '"# " + .title + "\n\n" + (.body // "") + "\n\n## Existing Labels\n" + ([.labels[].name] | if length == 0 then "none" else join(", ") end)' \
-            > /tmp/issue-body.txt
+            > .agent-context/issue-body.txt
 
           # Triage agent comments (if any)
           gh api --paginate "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
             --jq '.[] | select(.body | startswith("<!-- fullsend:triage-agent -->")) | .body' \
-            > /tmp/triage-comments.txt 2>/dev/null || true
+            > .agent-context/triage-comments.txt 2>/dev/null || true
 
           # User instructions from /implement comment or workflow_dispatch input
           if [ "${{ github.event_name }}" = "issue_comment" ]; then
@@ -150,11 +152,11 @@ jobs:
             INSTRUCTION="${INSTRUCTION# }"
             if [ -n "$INSTRUCTION" ]; then
               printf "## User Instructions (trusted — from authorized maintainer)\n\n%s\n" "$INSTRUCTION" \
-                > /tmp/user-instructions.txt
+                > .agent-context/user-instructions.txt
             fi
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$DISPATCH_INSTRUCTION" ]; then
             printf "## User Instructions (trusted — from workflow_dispatch)\n\n%s\n" "$DISPATCH_INSTRUCTION" \
-              > /tmp/user-instructions.txt
+              > .agent-context/user-instructions.txt
           fi
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -240,13 +242,15 @@ jobs:
           cat > .gemini/settings.json <<'SETTINGS'
           {
             "tools": {
-              "core": [
-                "read_file",
-                "write_file",
+              "allowed": [
                 "run_shell_command(git)",
                 "run_shell_command(make)",
                 "run_shell_command(go)",
-                "run_shell_command(bash)"
+                "run_shell_command(bash)",
+                "run_shell_command(cat)",
+                "run_shell_command(ls)",
+                "run_shell_command(find)",
+                "run_shell_command(grep)"
               ]
             }
           }
@@ -265,10 +269,10 @@ jobs:
 
           You are implementing GitHub issue #__ISSUE__.
 
-          ## Context files (pre-fetched for you)
-          - `/tmp/issue-body.txt` — the issue title, body, and labels
-          - `/tmp/triage-comments.txt` — triage agent analysis (may be empty)
-          - `/tmp/user-instructions.txt` — trusted maintainer instructions (may not exist)
+          ## Context files (pre-fetched for you — inside the workspace)
+          - `.agent-context/issue-body.txt` — the issue title, body, and labels
+          - `.agent-context/triage-comments.txt` — triage agent analysis (may be empty)
+          - `.agent-context/user-instructions.txt` — trusted maintainer instructions (may not exist)
 
           Read each file that exists before starting.
 
@@ -297,7 +301,7 @@ jobs:
           - Minimal changes only — fix the reported instance, do not refactor broadly
 
           ## Structured report
-          After completing your work, write /tmp/fullsend-report.md with sections:
+          After completing your work, write .agent-context/fullsend-report.md with sections:
           Summary, Root cause, Fix approach, Tests added/modified, Files changed,
           Confidence (high/medium/low), Lint/test iterations.
 
@@ -313,7 +317,7 @@ jobs:
           echo "::endgroup::"
 
           echo "▶ Starting Gemini CLI agent (streaming output)…"
-          gemini -p "$(cat /tmp/implement-prompt.txt)" --model gemini-3.1-pro-preview 2>&1
+          gemini -p "$(cat /tmp/implement-prompt.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
           echo "✅ Agent finished"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -349,8 +353,8 @@ jobs:
           EXISTING_PR="${{ steps.existing-pr.outputs.number }}"
 
           REPORT=""
-          if [ -f /tmp/fullsend-report.md ]; then
-            REPORT=$(cat /tmp/fullsend-report.md)
+          if [ -f .agent-context/fullsend-report.md ]; then
+            REPORT=$(cat .agent-context/fullsend-report.md)
           fi
 
           if [ -n "$EXISTING_PR" ]; then
@@ -394,8 +398,8 @@ jobs:
         if: steps.scan.outputs.detected != 'true' && steps.push.outputs.pushed == 'true'
         run: |
           PR_NUM="${{ steps.pr.outputs.number }}"
-          if [ -f /tmp/fullsend-report.md ]; then
-            CONTENT=$(cat /tmp/fullsend-report.md)
+          if [ -f .agent-context/fullsend-report.md ]; then
+            CONTENT=$(cat .agent-context/fullsend-report.md)
             CONTENT=$(printf "🤖 Implementation agent opened PR #%s\n\n%s" "$PR_NUM" "$CONTENT")
           else
             CONTENT="🤖 Implementation agent opened PR #${PR_NUM}. No structured report was produced."
@@ -452,7 +456,7 @@ jobs:
             fi
 
             echo "❌ $(echo "$FAILS" | jq 'length') check(s) failed — collecting logs…"
-            LOG="/tmp/ci-failures-r0.txt"
+            LOG=".agent-context/ci-failures-r0.txt"
             echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
             BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
             gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
@@ -485,7 +489,7 @@ jobs:
           This is fix attempt 1 of 2.
 
           Read the CI failure logs from \`${FAIL_LOG}\`.
-          Read the original issue from \`/tmp/issue-body.txt\`.
+          Read the original issue from \`.agent-context/issue-body.txt\`.
 
           Your task:
           1. Read the failure logs to understand exactly what failed
@@ -501,7 +505,7 @@ jobs:
           PROMPT
 
           echo "▶ CI Fix Agent (round 1) — streaming output…"
-          gemini -p "$(cat /tmp/ci-fix-prompt.txt)" --model gemini-3.1-pro-preview 2>&1
+          gemini -p "$(cat /tmp/ci-fix-prompt.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
           echo "✅ CI fix agent finished (round 1)"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -543,7 +547,7 @@ jobs:
             if [ "$(echo "$FAILS" | jq 'length')" -eq 0 ]; then
               echo "✅ All CI checks passed"; echo "result=passed" >> "$GITHUB_OUTPUT"; exit 0
             fi
-            LOG="/tmp/ci-failures-r1.txt"
+            LOG=".agent-context/ci-failures-r1.txt"
             echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
             BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
             gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
@@ -573,7 +577,7 @@ jobs:
           This is fix attempt 2 of 2 (FINAL attempt).
 
           Read the CI failure logs from \`${FAIL_LOG}\`.
-          Read the original issue from \`/tmp/issue-body.txt\`.
+          Read the original issue from \`.agent-context/issue-body.txt\`.
           Review git log to see what was already tried: git log --oneline -5
 
           Take a DIFFERENT approach than the previous fix attempt.
@@ -590,7 +594,7 @@ jobs:
           PROMPT
 
           echo "▶ CI Fix Agent (round 2 — FINAL) — streaming output…"
-          gemini -p "$(cat /tmp/ci-fix-prompt-r2.txt)" --model gemini-3.1-pro-preview 2>&1
+          gemini -p "$(cat /tmp/ci-fix-prompt-r2.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
           echo "✅ CI fix agent finished (round 2)"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -632,7 +636,7 @@ jobs:
             if [ "$(echo "$FAILS" | jq 'length')" -eq 0 ]; then
               echo "✅ All CI checks passed"; echo "result=passed" >> "$GITHUB_OUTPUT"; exit 0
             fi
-            LOG="/tmp/ci-failures-r2.txt"
+            LOG=".agent-context/ci-failures-r2.txt"
             echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
             BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
             gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
@@ -696,8 +700,8 @@ jobs:
         run: |
           MARKER="<!-- fullsend:implementation-agent -->"
           REPORT=""
-          if [ -f /tmp/fullsend-report.md ]; then
-            REPORT=$(cat /tmp/fullsend-report.md)
+          if [ -f .agent-context/fullsend-report.md ]; then
+            REPORT=$(cat .agent-context/fullsend-report.md)
           fi
           MSG=$(printf "⚠️ Implementation agent could not produce a fix for this issue.\n\n%s\n\nEscalating to human review." "$REPORT")
           .github/scripts/update-comment.sh "${{ github.repository }}" "$ISSUE_NUMBER" "$MARKER" "$MSG"
