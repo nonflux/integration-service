@@ -73,6 +73,19 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Overlay workflow files from trigger branch
+        if: github.ref_name != env.TARGET_BRANCH
+        run: |
+          git fetch origin "${{ github.ref_name }}" --depth=1
+          git checkout "origin/${{ github.ref_name }}" -- \
+            .github/scripts/ \
+            .gemini/commands/implement-from-issue.md \
+            Makefile \
+            2>/dev/null || true
+          git reset HEAD -- . > /dev/null 2>&1 || true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
@@ -398,10 +411,57 @@ jobs:
         if: steps.scan.outputs.detected != 'true' && steps.push.outputs.pushed == 'true'
         id: ci-round-0
         run: |
-          .github/scripts/wait-for-checks.sh \
-            "${{ github.repository }}" \
-            "${{ steps.pr.outputs.number }}" \
-            1800
+          REPO="${{ github.repository }}"
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          TIMEOUT=1800
+          POLL=60
+          IGNORE="implement|Implementation Agent|Review Agent|Fix Agent"
+
+          echo "⏳ Waiting for CI checks on PR #${PR_NUMBER}…"
+          sleep 30
+
+          START=$(date +%s)
+          while true; do
+            ELAPSED=$(( $(date +%s) - START ))
+            if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+              echo "::warning::CI check timeout after ${TIMEOUT}s"
+              echo "result=timeout" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+            CHECKS=$(gh api "repos/${REPO}/commits/${SHA}/check-runs" --paginate \
+              --jq '[.check_runs[] | {name: .name, status: .status, conclusion: .conclusion}]' 2>/dev/null || echo "[]")
+            RELEVANT=$(echo "$CHECKS" | jq --arg p "$IGNORE" '[.[] | select(.name | test($p; "i") | not)]')
+
+            TOTAL=$(echo "$RELEVANT" | jq 'length')
+            DONE=$(echo "$RELEVANT" | jq '[.[] | select(.status == "completed")] | length')
+            echo "  CI: ${DONE}/${TOTAL} completed (${ELAPSED}s elapsed)"
+
+            [ "$TOTAL" -eq 0 ] && { sleep "$POLL"; continue; }
+            [ "$DONE" -lt "$TOTAL" ] && { sleep "$POLL"; continue; }
+
+            FAILS=$(echo "$RELEVANT" | jq '[.[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")]')
+            if [ "$(echo "$FAILS" | jq 'length')" -eq 0 ]; then
+              echo "✅ All CI checks passed"
+              echo "result=passed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "❌ $(echo "$FAILS" | jq 'length') check(s) failed — collecting logs…"
+            LOG="/tmp/ci-failures-r0.txt"
+            echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
+            BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
+            gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
+              --jq '.workflow_runs[].id' 2>/dev/null | while read -r RID; do
+              echo "---" >> "$LOG"
+              gh run view "$RID" --repo "$REPO" --log-failed 2>/dev/null | tail -300 >> "$LOG" || true
+            done
+            head -c 51200 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+            echo "result=failed" >> "$GITHUB_OUTPUT"
+            echo "failure_log=$LOG" >> "$GITHUB_OUTPUT"
+            exit 0
+          done
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -467,10 +527,35 @@ jobs:
         if: steps.ci-round-0.outputs.result == 'failed'
         id: ci-round-1
         run: |
-          .github/scripts/wait-for-checks.sh \
-            "${{ github.repository }}" \
-            "${{ steps.pr.outputs.number }}" \
-            1800
+          REPO="${{ github.repository }}"
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          TIMEOUT=1800; POLL=60; IGNORE="implement|Implementation Agent|Review Agent|Fix Agent"
+          echo "⏳ Waiting for CI checks (round 1)…"; sleep 30; START=$(date +%s)
+          while true; do
+            ELAPSED=$(( $(date +%s) - START ))
+            [ "$ELAPSED" -ge "$TIMEOUT" ] && { echo "result=timeout" >> "$GITHUB_OUTPUT"; exit 0; }
+            SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+            CHECKS=$(gh api "repos/${REPO}/commits/${SHA}/check-runs" --paginate \
+              --jq '[.check_runs[] | {name: .name, status: .status, conclusion: .conclusion}]' 2>/dev/null || echo "[]")
+            RELEVANT=$(echo "$CHECKS" | jq --arg p "$IGNORE" '[.[] | select(.name | test($p; "i") | not)]')
+            TOTAL=$(echo "$RELEVANT" | jq 'length'); DONE=$(echo "$RELEVANT" | jq '[.[] | select(.status == "completed")] | length')
+            echo "  CI: ${DONE}/${TOTAL} completed (${ELAPSED}s elapsed)"
+            [ "$TOTAL" -eq 0 ] && { sleep "$POLL"; continue; }
+            [ "$DONE" -lt "$TOTAL" ] && { sleep "$POLL"; continue; }
+            FAILS=$(echo "$RELEVANT" | jq '[.[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")]')
+            if [ "$(echo "$FAILS" | jq 'length')" -eq 0 ]; then
+              echo "✅ All CI checks passed"; echo "result=passed" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            LOG="/tmp/ci-failures-r1.txt"
+            echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
+            BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
+            gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
+              --jq '.workflow_runs[].id' 2>/dev/null | while read -r RID; do
+              echo "---" >> "$LOG"; gh run view "$RID" --repo "$REPO" --log-failed 2>/dev/null | tail -300 >> "$LOG" || true
+            done
+            head -c 51200 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+            echo "result=failed" >> "$GITHUB_OUTPUT"; echo "failure_log=$LOG" >> "$GITHUB_OUTPUT"; exit 0
+          done
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
@@ -537,10 +622,35 @@ jobs:
         if: steps.ci-round-1.outputs.result == 'failed'
         id: ci-round-2
         run: |
-          .github/scripts/wait-for-checks.sh \
-            "${{ github.repository }}" \
-            "${{ steps.pr.outputs.number }}" \
-            1800
+          REPO="${{ github.repository }}"
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          TIMEOUT=1800; POLL=60; IGNORE="implement|Implementation Agent|Review Agent|Fix Agent"
+          echo "⏳ Waiting for CI checks (round 2)…"; sleep 30; START=$(date +%s)
+          while true; do
+            ELAPSED=$(( $(date +%s) - START ))
+            [ "$ELAPSED" -ge "$TIMEOUT" ] && { echo "result=timeout" >> "$GITHUB_OUTPUT"; exit 0; }
+            SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+            CHECKS=$(gh api "repos/${REPO}/commits/${SHA}/check-runs" --paginate \
+              --jq '[.check_runs[] | {name: .name, status: .status, conclusion: .conclusion}]' 2>/dev/null || echo "[]")
+            RELEVANT=$(echo "$CHECKS" | jq --arg p "$IGNORE" '[.[] | select(.name | test($p; "i") | not)]')
+            TOTAL=$(echo "$RELEVANT" | jq 'length'); DONE=$(echo "$RELEVANT" | jq '[.[] | select(.status == "completed")] | length')
+            echo "  CI: ${DONE}/${TOTAL} completed (${ELAPSED}s elapsed)"
+            [ "$TOTAL" -eq 0 ] && { sleep "$POLL"; continue; }
+            [ "$DONE" -lt "$TOTAL" ] && { sleep "$POLL"; continue; }
+            FAILS=$(echo "$RELEVANT" | jq '[.[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")]')
+            if [ "$(echo "$FAILS" | jq 'length')" -eq 0 ]; then
+              echo "✅ All CI checks passed"; echo "result=passed" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            LOG="/tmp/ci-failures-r2.txt"
+            echo "$FAILS" | jq -r '.[] | "## " + .name + " (" + .conclusion + ")"' > "$LOG"
+            BRANCH=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')
+            gh api "repos/${REPO}/actions/runs?branch=${BRANCH}&status=failure&per_page=5" \
+              --jq '.workflow_runs[].id' 2>/dev/null | while read -r RID; do
+              echo "---" >> "$LOG"; gh run view "$RID" --repo "$REPO" --log-failed 2>/dev/null | tail -300 >> "$LOG" || true
+            done
+            head -c 51200 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+            echo "result=failed" >> "$GITHUB_OUTPUT"; echo "failure_log=$LOG" >> "$GITHUB_OUTPUT"; exit 0
+          done
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
