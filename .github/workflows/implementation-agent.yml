@@ -317,7 +317,12 @@ jobs:
           echo "::endgroup::"
 
           echo "▶ Starting Gemini CLI agent (streaming output)…"
-          gemini -p "$(cat /tmp/implement-prompt.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
+          cat > /tmp/run-agent.sh <<'AGENTSCRIPT'
+          #!/bin/bash
+          exec gemini -p "$(cat /tmp/implement-prompt.txt)" --yolo --model gemini-3.1-pro-preview
+          AGENTSCRIPT
+          chmod +x /tmp/run-agent.sh
+          script -qefc "bash /tmp/run-agent.sh" /dev/null 2>&1
           echo "✅ Agent finished"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -505,7 +510,12 @@ jobs:
           PROMPT
 
           echo "▶ CI Fix Agent (round 1) — streaming output…"
-          gemini -p "$(cat /tmp/ci-fix-prompt.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
+          cat > /tmp/run-ci-fix.sh <<'AGENTSCRIPT'
+          #!/bin/bash
+          exec gemini -p "$(cat /tmp/ci-fix-prompt.txt)" --yolo --model gemini-3.1-pro-preview
+          AGENTSCRIPT
+          chmod +x /tmp/run-ci-fix.sh
+          script -qefc "bash /tmp/run-ci-fix.sh" /dev/null 2>&1
           echo "✅ CI fix agent finished (round 1)"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -594,7 +604,12 @@ jobs:
           PROMPT
 
           echo "▶ CI Fix Agent (round 2 — FINAL) — streaming output…"
-          gemini -p "$(cat /tmp/ci-fix-prompt-r2.txt)" --yolo --model gemini-3.1-pro-preview 2>&1
+          cat > /tmp/run-ci-fix-r2.sh <<'AGENTSCRIPT'
+          #!/bin/bash
+          exec gemini -p "$(cat /tmp/ci-fix-prompt-r2.txt)" --yolo --model gemini-3.1-pro-preview
+          AGENTSCRIPT
+          chmod +x /tmp/run-ci-fix-r2.sh
+          script -qefc "bash /tmp/run-ci-fix-r2.sh" /dev/null 2>&1
           echo "✅ CI fix agent finished (round 2)"
         env:
           GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
