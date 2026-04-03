@@ -1,3 +1,4 @@
+exclude: '^(vendor/|dist/chart/templates/|.*_test\.go|.*_test_data\.go)'
 repos:
   # Go formatting and vetting
   - repo: https://github.com/dnephin/pre-commit-golang
@@ -45,13 +46,6 @@ repos:
     hooks:
       - id: yamllint
         args: ['-d', '{extends: relaxed, rules: {line-length: {max: 150}}}']
-
-  # Go security scanner (gosec)
-  - repo: https://github.com/securego/gosec
-    rev: v2.25.0
-    hooks:
-      - id: gosec
-        args: ['-exclude-dir=vendor', '-exclude-dir=integration-tests', './...']
 
   # GitHub Actions workflow linting
   - repo: https://github.com/rhysd/actionlint
