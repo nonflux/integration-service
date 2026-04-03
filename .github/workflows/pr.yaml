@@ -83,13 +83,13 @@ jobs:
         if: steps.cache-operator-sdk.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/cache
-          wget https://github.com/operator-framework/operator-sdk/releases/download/${OPERATOR_SDK_VERSION}/operator-sdk_linux_amd64 -O ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} > /dev/null -O ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} > /dev/null
-          chmod +x ~/cache/operator-sdk-${OPERATOR_SDK_VERSION}
+          wget https://github.com/operator-framework/operator-sdk/releases/download/"${OPERATOR_SDK_VERSION}"/operator-sdk_linux_amd64 -O ~/cache/operator-sdk-"${OPERATOR_SDK_VERSION}" > /dev/null
+          chmod +x ~/cache/operator-sdk-"${OPERATOR_SDK_VERSION}"
       - name: Install Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
         run: |
           mkdir -p ~/bin
-          cp ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} ~/bin/operator-sdk
-          echo "$HOME/bin" >> $GITHUB_PATH
+          cp ~/cache/operator-sdk-"${OPERATOR_SDK_VERSION}" ~/bin/operator-sdk
+          echo "$HOME/bin" >> "$GITHUB_PATH"
       - name: Regenerate executables with current environment packages
         run: |
           rm -f bin/kustomize bin/controller-gen
@@ -109,7 +109,7 @@ jobs:
         run: |
           time_before=$(date "+%F %T")
           go mod tidy
-          if [[ $(find . -type f -newermt "$time_before") ]]
+          if [[ -n "$(find . -type f -newermt "$time_before")" ]]
           then
             echo "Go mod state is not clean:"
             find . -type f -newermt "$time_before"
@@ -119,10 +119,10 @@ jobs:
         run: |
           time_before=$(date "+%F %T")
           make fmt
-          if [[ $(find . -type f -newermt "$time_before") ]]
+          if [[ -n "$(find . -type f -newermt "$time_before")" ]]
           then
             echo "Some files are not properly formatted."
-            echo "Please run `go fmt` and amend your commit."
+            echo "Please run \`go fmt\` and amend your commit."
             find . -type f -newermt "$time_before"
             exit 1
           fi
@@ -130,7 +130,7 @@ jobs:
         run: |
           set -euo pipefail
           make generate manifests
-          if [[ ! -z $(git status -s) ]]
+          if [[ ! -z "$(git status -s)" ]]
           then
             echo "generated sources are not up to date:"
             git --no-pager diff
@@ -138,7 +138,7 @@ jobs:
           fi
       - name: Check RBAC wildcards
         run: |
-          if grep -rni "*" /tmp/integration-service/config/rbac/* ; then
+          if grep -rnF "*" /tmp/integration-service/config/rbac/* ; then
             echo "generated RBAC roles contains wildcards"
             exit 1
           fi

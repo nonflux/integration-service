@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -36,10 +36,10 @@ jobs:
       - name: Prepare integration-service
         run: |
           go mod tidy
-          export IMG=integration-service:v$DUMMY_VERSION
+          export IMG="integration-service:v$DUMMY_VERSION"
           yq -i '.controllerManager.container.image = env(IMG)' dist/chart/values.yaml
-          make img-build IMG=$IMG
-          kind load docker-image $IMG
+          make img-build IMG="$IMG"
+          kind load docker-image "$IMG"
 
       - name: Verify Helm installation
         run: helm version
@@ -90,7 +90,7 @@ jobs:
   kube-linter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Scan yaml files with kube-linter
         uses: stackrox/kube-linter-action@v1
         id: kube-linter-action-scan

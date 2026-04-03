@@ -103,9 +103,11 @@ jobs:
           REVIEW_FILE="/tmp/review-${GITHUB_RUN_ID}-${HASH}.md"
           DIFF_FILE="/tmp/pr-diff-${GITHUB_RUN_ID}-${HASH}.txt"
           DESC_FILE="/tmp/pr-description-${GITHUB_RUN_ID}-${HASH}.txt"
-          echo "file=$REVIEW_FILE" >> "$GITHUB_OUTPUT"
-          echo "diff=$DIFF_FILE" >> "$GITHUB_OUTPUT"
-          echo "desc=$DESC_FILE" >> "$GITHUB_OUTPUT"
+          {
+            echo "file=$REVIEW_FILE"
+            echo "diff=$DIFF_FILE"
+            echo "desc=$DESC_FILE"
+          } >> "$GITHUB_OUTPUT"
 
           # Pre-fetch PR data so Gemini doesn't need gh access
           gh pr diff ${{ github.event.pull_request.number }} > "$DIFF_FILE"
