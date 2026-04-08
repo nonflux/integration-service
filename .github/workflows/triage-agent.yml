@@ -139,23 +139,28 @@ jobs:
           # Extract summary (everything after the --- separator)
           SUMMARY=$(sed '1,/^---$/d' "$TRIAGE_FILE")
 
+          # Remove spaces to ensure exact string matching
+          LABELS="${LABELS// /}"
+
           if [ -z "$LABELS" ]; then
             echo "::warning::No labels found in triage output"
           else
-            # Ensure ready-for-implementation is the last label
             TMP_LABELS=",${LABELS},"
             if [[ "$TMP_LABELS" == *",ready-for-implementation,"* ]]; then
               CLEANED="${TMP_LABELS//,ready-for-implementation,/,}"
               CLEANED="${CLEANED#,}"
               CLEANED="${CLEANED%,}"
-              if [ -z "$CLEANED" ]; then
-                LABELS="ready-for-implementation"
-              else
-                LABELS="${CLEANED},ready-for-implementation"
+              
+              if [ -n "$CLEANED" ]; then
+                echo "Applying initial labels: $CLEANED"
+                gh issue edit ${{ github.event.issue.number }} --add-label "$CLEANED"
               fi
+              echo "Applying ready-for-implementation separately to prevent race condition"
+              gh issue edit ${{ github.event.issue.number }} --add-label "ready-for-implementation"
+            else
+              echo "Applying labels: $LABELS"
+              gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
             fi
-            echo "Applying labels: $LABELS"
-            gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
           fi
 
           if [ -z "$SUMMARY" ]; then
