@@ -1379,7 +1379,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, incompletePlr)).Should(Succeed())
+			completedStatus := completedPlr.Status.DeepCopy()
 			Expect(k8sClient.Create(ctx, completedPlr)).Should(Succeed())
+			completedPlr.Status = *completedStatus
+			Expect(k8sClient.Status().Update(ctx, completedPlr)).Should(Succeed())
 
 			plrs := []tektonv1.PipelineRun{*incompletePlr, *completedPlr}
 
