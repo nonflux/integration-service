@@ -523,6 +523,7 @@ func deleteSnapshots(
 		if err != nil {
 			logger.Error(err, "Failed to remove finalizers from pipelineruns for snapshot.",
 				"snapshot.name", snap.Name)
+			continue
 		}
 
 		err = cl.Delete(context.Background(), &snap)
