@@ -29,6 +29,15 @@ rules:
   - list
   - delete
 - apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
   - ''
   resources:
   - namespaces

@@ -17,6 +17,7 @@ limitations under the License.
 package gitops_test
 
 import (
+	"github.com/go-logr/logr"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,13 +29,17 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -1342,6 +1347,59 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isCommentDisabled).To(BeFalse())
+		})
+	})
+
+	Context("CancelPipelineRuns", func() {
+		It("should remove finalizers from both completed and incomplete PipelineRuns", func() {
+			incompletePlr := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "cancel-plr-incomplete",
+					Namespace:   namespace,
+					Finalizers:  []string{helpers.IntegrationPipelineRunFinalizer},
+					Annotations: map[string]string{},
+				},
+			}
+			completedPlr := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "cancel-plr-completed",
+					Namespace:   namespace,
+					Finalizers:  []string{helpers.IntegrationPipelineRunFinalizer},
+					Annotations: map[string]string{},
+				},
+				Status: tektonv1.PipelineRunStatus{
+					Status: duckv1.Status{
+						Conditions: duckv1.Conditions{
+							{
+								Type:   apis.ConditionSucceeded,
+								Status: corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, incompletePlr)).Should(Succeed())
+			completedStatus := completedPlr.Status.DeepCopy()
+			Expect(k8sClient.Create(ctx, completedPlr)).Should(Succeed())
+			completedPlr.Status = *completedStatus
+			Expect(k8sClient.Status().Update(ctx, completedPlr)).Should(Succeed())
+
+			plrs := []tektonv1.PipelineRun{*incompletePlr, *completedPlr}
+
+			err := gitops.CancelPipelineRuns(k8sClient, ctx, helpers.IntegrationLogger{Logger: logr.Discard()}, plrs)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check incomplete plr: finalizer removed + cancelled
+			updatedIncompletePlr := &tektonv1.PipelineRun{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: incompletePlr.Name, Namespace: namespace}, updatedIncompletePlr)).Should(Succeed())
+			Expect(updatedIncompletePlr.Finalizers).To(BeEmpty())
+			Expect(updatedIncompletePlr.Spec.Status).To(BeEquivalentTo(tektonv1.PipelineRunSpecStatusCancelledRunFinally))
+
+			// Check completed plr: finalizer removed but NOT cancelled
+			updatedCompletedPlr := &tektonv1.PipelineRun{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: completedPlr.Name, Namespace: namespace}, updatedCompletedPlr)).Should(Succeed())
+			Expect(updatedCompletedPlr.Finalizers).To(BeEmpty())
+			Expect(updatedCompletedPlr.Spec.Status).To(BeEmpty())
 		})
 	})
 
