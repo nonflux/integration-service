@@ -139,11 +139,30 @@ jobs:
           # Extract summary (everything after the --- separator)
           SUMMARY=$(sed '1,/^---$/d' "$TRIAGE_FILE")
 
+          # Clean spaces around commas, preserving spaces inside label names
+          LABELS=$(echo "$LABELS" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]]*,[[:space:]]*/,/g')
+
           if [ -z "$LABELS" ]; then
             echo "::warning::No labels found in triage output"
           else
-            echo "Applying labels: $LABELS"
-            gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
+            TMP_LABELS=",${LABELS},"
+            if [[ "$TMP_LABELS" == *",ready-for-implementation,"* ]]; then
+              while [[ "$TMP_LABELS" == *",ready-for-implementation,"* ]]; do
+                TMP_LABELS="${TMP_LABELS//,ready-for-implementation,/,}"
+              done
+              CLEANED="${TMP_LABELS#,}"
+              CLEANED="${CLEANED%,}"
+              
+              if [ -n "$CLEANED" ]; then
+                echo "Applying initial labels: $CLEANED"
+                gh issue edit ${{ github.event.issue.number }} --add-label "$CLEANED"
+              fi
+              echo "Applying ready-for-implementation separately to prevent race condition"
+              gh issue edit ${{ github.event.issue.number }} --add-label "ready-for-implementation"
+            else
+              echo "Applying labels: $LABELS"
+              gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS"
+            fi
           fi
 
           if [ -z "$SUMMARY" ]; then
