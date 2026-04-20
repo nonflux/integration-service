@@ -11,9 +11,11 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
 	core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -701,6 +703,44 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snapsRemaining.Items).To(HaveLen(1))
 			Expect(snapsRemaining.Items[0].Name).To(Equal("no-del"))
+		})
+
+		It("Removes pipelinerun finalizers before deleting snapshots", func() {
+			snap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snap-with-plrs",
+					Namespace: "ns1",
+				},
+			}
+			plr := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-plr",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"appstudio.openshift.io/snapshot": "snap-with-plrs",
+					},
+					Finalizers: []string{helpers.IntegrationPipelineRunFinalizer},
+				},
+			}
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(snap, plr).
+				Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{*snap}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			// Verify the snapshot was deleted
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining, &client.ListOptions{Namespace: "ns1"})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapsRemaining.Items).To(BeEmpty())
+
+			// Verify the finalizer was removed from the pipelinerun
+			plrsRemaining := &tektonv1.PipelineRunList{}
+			err = cl.List(context.Background(), plrsRemaining, &client.ListOptions{Namespace: "ns1"})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(plrsRemaining.Items).To(HaveLen(1))
+			Expect(plrsRemaining.Items[0].Finalizers).To(BeEmpty())
 		})
 
 		It("Handles all snapshots to be removed and continues on failure", func() {
