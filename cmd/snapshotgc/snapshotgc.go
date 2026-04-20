@@ -13,8 +13,10 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	core "k8s.io/api/core/v1"
@@ -50,6 +52,7 @@ func init() {
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(releasev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(tektonv1.AddToScheme(scheme))
 }
 
 // Stores pointers to resources to which the snapshot is associated
@@ -509,7 +512,19 @@ func deleteSnapshots(
 
 	for _, snap := range snapshots {
 		snap := snap
-		err := cl.Delete(context.Background(), &snap)
+		// Remove finalizers from all integration PLRs associated with
+		// this snapshot before deleting, so the PLRs can be pruned.
+		err := helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(
+			context.Background(), cl,
+			helpers.IntegrationLogger{Logger: logger},
+			snap, helpers.IntegrationPipelineRunFinalizer,
+		)
+		if err != nil {
+			logger.Error(err, "Failed to remove finalizer from integration pipelineruns of snapshot.", "snapshot.name", snap.Name)
+			continue
+		}
+
+		err = cl.Delete(context.Background(), &snap)
 		if err != nil {
 			logger.Error(err, "Failed to delete snapshot.", "snapshot.name", snap.Name)
 		}
