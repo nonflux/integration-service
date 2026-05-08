@@ -1,5 +1,5 @@
 # fullsend shim workflow (workflow_call mode)
-# Routes events to agent workflows in .fullsend via workflow_call.
+# Routes events to agent workflows in fullsend-config via workflow_call.
 # No secrets are needed in the enrolled repo — agents fetch scoped tokens
 # from the centralized token mint using GitHub OIDC.
 #
@@ -48,7 +48,7 @@ jobs:
           !contains(toJSON(github.event.issue.labels.*.name), 'type/feature')
         )
       )
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: triage
     secrets: {}
@@ -67,7 +67,7 @@ jobs:
           startsWith(github.event.comment.body, '/code ') ||
           startsWith(github.event.comment.body, format('{0}{1}', '/code', fromJSON('"\n"')))
         ))
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: code
     secrets: {}
@@ -90,7 +90,7 @@ jobs:
       )) ||
       (github.event_name == 'pull_request_target'
         && github.event.action != 'closed')
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: review
     secrets: {}
@@ -105,7 +105,7 @@ jobs:
         && github.event.review.user.login == format('{0}-review[bot]', github.repository_owner)
         && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
         && !contains(github.event.pull_request.labels.*.name, 'fullsend-no-fix')
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: fix
       trigger_source: ${{ github.event.review.user.login }}
@@ -132,7 +132,7 @@ jobs:
           || github.event.comment.author_association == 'MEMBER'
           || github.event.comment.author_association == 'COLLABORATOR'
         )
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: fix
       trigger_source: ${{ github.event.comment.user.login }}
@@ -145,7 +145,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request_target'
         && github.event.action == 'closed'
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: retro
     secrets: {}
@@ -170,7 +170,7 @@ jobs:
           || github.event.comment.author_association == 'MEMBER'
           || github.event.comment.author_association == 'COLLABORATOR'
         )
-    uses: nonflux/.fullsend/.github/workflows/dispatch.yml@main
+    uses: nonflux/fullsend-config/.github/workflows/dispatch.yml@main
     with:
       stage: retro
     secrets: {}
