@@ -3,6 +3,6 @@ on:
   workflow_dispatch:
 jobs:
   call-test:
-    uses: nonflux/fullsend-config/.github/workflows/test-dispatch.yml@main
+    uses: nonflux/.fullsend/.github/workflows/test-dispatch.yml@main
     with:
       stage: test
