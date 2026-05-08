@@ -1,8 +1,0 @@
-name: Test Cross-Repo Call
-on:
-  workflow_dispatch:
-jobs:
-  call-test:
-    uses: nonflux/.fullsend/.github/workflows/test-dispatch.yml@main
-    with:
-      stage: test
