@@ -1,5 +1,5 @@
 # fullsend shim workflow (workflow_call mode)
-# Routes events to agent workflows in fullsend-config via workflow_call.
+# Routes events to agent workflows in .fullsend via workflow_call.
 # No secrets are needed in the enrolled repo — agents fetch scoped tokens
 # from the centralized token mint using GitHub OIDC.
 #
@@ -16,7 +16,6 @@
 name: fullsend
 
 permissions:
-  actions: write
   id-token: write
   contents: read
   pull-requests: read
