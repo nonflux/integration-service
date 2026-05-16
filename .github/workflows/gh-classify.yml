@@ -1,0 +1,195 @@
+# Classify GitHub issues (per-repo installation mode).
+# Adapted from fullsend-ai/.fullsend gh-classify.yml for per-repo install
+# where tokens are minted via OIDC instead of direct app credentials.
+name: Classify GitHub Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Owner/repo to classify issues in (defaults to this repo)"
+        required: false
+        type: string
+      classify_mode:
+        description: "Classification mode"
+        required: false
+        type: choice
+        options:
+          - single
+          - unclassified
+          - all
+        default: "unclassified"
+      issue_number:
+        description: "Specific issue number (single mode only)"
+        required: false
+        type: string
+      dry_run:
+        description: "Dry run (no writes)"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "false"
+      min_confidence:
+        description: "Minimum confidence threshold (0.0-1.0)"
+        required: false
+        type: string
+        default: "0.7"
+      filter_category:
+        description: "Only classify into this category (leave empty for all categories)"
+        required: false
+        type: string
+      screen_issues:
+        description: "Screen issues by title/labels before fetching details"
+        required: false
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "true"
+
+concurrency:
+  group: fullsend-gh-classify-${{ inputs.classify_mode }}-${{ inputs.issue_number || 'batch' }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  gh-classify:
+    name: Classify Issues
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Checkout upstream defaults
+        uses: actions/checkout@v6
+        with:
+          repository: fullsend-ai/fullsend
+          ref: v0
+          path: .defaults
+          sparse-checkout: |
+            internal/scaffold/fullsend-repo/
+
+      - name: Prepare workspace (upstream defaults + per-repo overrides)
+        run: |
+          set -euo pipefail
+          SRC=".defaults/internal/scaffold/fullsend-repo"
+          LAYERED_DIRS="agents skills schemas harness policies scripts env"
+          for dir in ${LAYERED_DIRS}; do
+            if [[ -d "${SRC}/${dir}" ]]; then
+              mkdir -p "${dir}"
+              cp -r "${SRC}/${dir}/." "${dir}/"
+            fi
+          done
+          CUSTOM_BASE=".fullsend/customized"
+          for dir in ${LAYERED_DIRS}; do
+            if [[ -d "${CUSTOM_BASE}/${dir}" ]]; then
+              find "${CUSTOM_BASE}/${dir}" -type f ! -name '.gitkeep' -print0 \
+                | while IFS= read -r -d '' f; do
+                    rel="${f#"${CUSTOM_BASE}"/}"
+                    mkdir -p "$(dirname "${rel}")"
+                    cp "${f}" "${rel}"
+                  done
+            fi
+          done
+          mkdir -p .github/scripts
+          cp "${SRC}/.github/scripts/setup-agent-env.sh" .github/scripts/setup-agent-env.sh
+          rm -rf .defaults
+
+      - name: Determine classify parameters
+        id: params
+        env:
+          INPUT_SOURCE_REPO: ${{ inputs.source_repo }}
+          INPUT_CLASSIFY_MODE: ${{ inputs.classify_mode }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_MIN_CONFIDENCE: ${{ inputs.min_confidence }}
+          INPUT_FILTER_CATEGORY: ${{ inputs.filter_category }}
+          INPUT_SCREEN_ISSUES: ${{ inputs.screen_issues }}
+        run: |
+          set -euo pipefail
+
+          SOURCE_REPO="${INPUT_SOURCE_REPO:-$GITHUB_REPOSITORY}"
+
+          if [[ ! "${SOURCE_REPO}" =~ ^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::source_repo format invalid"
+            exit 1
+          fi
+
+          CLASSIFY_MODE="${INPUT_CLASSIFY_MODE:-unclassified}"
+          ISSUE_NUMBER="${INPUT_ISSUE_NUMBER:-}"
+
+          if [[ "${CLASSIFY_MODE}" == "single" && -n "${ISSUE_NUMBER}" && ! "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::issue_number must be a positive integer"
+            exit 1
+          fi
+
+          # Extract repo name (without owner) for mint-token scoping.
+          REPO_NAME="${SOURCE_REPO#*/}"
+
+          echo "source_repo=${SOURCE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "repo_name=${REPO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "classify_mode=${CLASSIFY_MODE}" >> "$GITHUB_OUTPUT"
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${INPUT_DRY_RUN:-false}" >> "$GITHUB_OUTPUT"
+          echo "min_confidence=${INPUT_MIN_CONFIDENCE:-0.7}" >> "$GITHUB_OUTPUT"
+          echo "filter_category=${INPUT_FILTER_CATEGORY:-}" >> "$GITHUB_OUTPUT"
+          echo "screen_issues=${INPUT_SCREEN_ISSUES:-true}" >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Mode=${CLASSIFY_MODE} Repo=${SOURCE_REPO} Issue=${ISSUE_NUMBER:-<batch>} DryRun=${INPUT_DRY_RUN:-false} Screen=${INPUT_SCREEN_ISSUES:-true}"
+
+      - name: Mint triage token
+        id: app-token
+        uses: fullsend-ai/fullsend/.github/actions/mint-token@v0
+        with:
+          role: triage
+          repos: ${{ steps.params.outputs.repo_name }}
+          mint_url: ${{ vars.FULLSEND_MINT_URL }}
+
+      - name: Setup GCP and prepare credentials
+        uses: fullsend-ai/fullsend/.github/actions/setup-gcp@v0
+        with:
+          gcp_wif_provider: ${{ secrets.FULLSEND_GCP_WIF_PROVIDER }}
+          gcp_project_id: ${{ secrets.FULLSEND_GCP_PROJECT_ID }}
+
+      - name: Setup agent environment
+        env:
+          AGENT_PREFIX: CLASSIFY_
+          CLASSIFY_GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          CLASSIFY_SOURCE_REPO: ${{ steps.params.outputs.source_repo }}
+          CLASSIFY_MODE: ${{ steps.params.outputs.classify_mode }}
+          CLASSIFY_ISSUE_NUMBER: ${{ steps.params.outputs.issue_number || '0' }}
+          CLASSIFY_DRY_RUN: ${{ steps.params.outputs.dry_run }}
+          CLASSIFY_MIN_CONFIDENCE: ${{ steps.params.outputs.min_confidence }}
+          CLASSIFY_ANTHROPIC_VERTEX_PROJECT_ID: ${{ secrets.FULLSEND_GCP_PROJECT_ID }}
+          CLASSIFY_CLOUD_ML_REGION: ${{ vars.FULLSEND_GCP_REGION }}
+          CLASSIFY_FILTER_CATEGORY: ${{ steps.params.outputs.filter_category || '__all__' }}
+          CLASSIFY_SCREEN_ISSUES: ${{ steps.params.outputs.screen_issues }}
+          CLASSIFY_CATEGORIES_PATH: ${{ vars.FULLSEND_GH_CLASSIFY_CATEGORIES_PATH || 'categories.md' }}
+        run: bash .github/scripts/setup-agent-env.sh
+
+      - name: Prepare target-repo placeholder
+        run: mkdir -p "${GITHUB_WORKSPACE}/target-repo"
+
+      - name: Run classify agent
+        uses: fullsend-ai/fullsend@v0
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          CLASSIFY_SOURCE_REPO: ${{ steps.params.outputs.source_repo }}
+          CLASSIFY_MODE: ${{ steps.params.outputs.classify_mode }}
+          CLASSIFY_ISSUE_NUMBER: ${{ steps.params.outputs.issue_number || '0' }}
+          CLASSIFY_DRY_RUN: ${{ steps.params.outputs.dry_run }}
+          CLASSIFY_MIN_CONFIDENCE: ${{ steps.params.outputs.min_confidence }}
+          CLASSIFY_FILTER_CATEGORY: ${{ steps.params.outputs.filter_category || '__all__' }}
+          CLASSIFY_SCREEN_ISSUES: ${{ steps.params.outputs.screen_issues }}
+          CLASSIFY_CATEGORIES_PATH: ${{ vars.FULLSEND_GH_CLASSIFY_CATEGORIES_PATH || 'categories.md' }}
+          CLASSIFY_PROJECT_TOKEN: ${{ secrets.FULLSEND_GH_CLASSIFY_PROJECT_PAT || '__none__' }}
+        with:
+          agent: gh-classify
