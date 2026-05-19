@@ -5,7 +5,8 @@
 # See ADR 0033 for details.
 version: "1"
 roles:
-    - fullsend
     - triage
     - coder
     - review
+    - retro
+    - prioritize
