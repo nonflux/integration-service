@@ -1,3 +1,5 @@
+# gh-classify agent policy — classify issues into workstream categories.
+# Read-only GitHub access (issues, labels, projects).
 version: 1
 
 filesystem_policy:
@@ -14,16 +16,23 @@ network_policies:
   vertex_ai:
     name: vertex-ai
     endpoints:
-      - host: "*.github.com"
-        port: 443
-        protocol: tcp
-        enforcement: enforce
-        access: allow
       - host: "*.googleapis.com"
         port: 443
-        protocol: tcp
+        protocol: rest
         enforcement: enforce
-        access: allow
+        access: read-write
+    binaries:
+      - path: "**/claude"
+      - path: "**/node"
+
+  github_api:
+    name: github-api
+    endpoints:
+      - host: "*.github.com"
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        access: read-only
     binaries:
       - path: "**/curl"
       - path: "**/claude"
