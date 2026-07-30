@@ -40,15 +40,12 @@ jobs:
     if: >-
       github.event_name != 'issue_comment'
       || github.event.comment.user.type != 'Bot'
-    # TEMPORARY: testing podman 5.8.4 sandbox compat (fullsend-ai/fullsend#5742).
-    # Revert to @v0 / drop fullsend_version after the test.
-    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@test-5742-podman-5.8.4
+    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@v0
     with:
       event_action: ${{ github.event.action }}
       install_mode: per-repo
       mint_url: ${{ vars.FULLSEND_MINT_URL }}
       gcp_region: ${{ vars.FULLSEND_GCP_REGION }}
-      fullsend_version: test-5742-podman-5.8.4
     secrets:
       FULLSEND_GCP_WIF_PROVIDER: ${{ secrets.FULLSEND_GCP_WIF_PROVIDER }}
       FULLSEND_GCP_PROJECT_ID: ${{ secrets.FULLSEND_GCP_PROJECT_ID }}
