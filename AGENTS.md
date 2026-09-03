@@ -21,7 +21,8 @@ runs to validate component builds before promotion.
 ## Build and Test
 
 - Run `make test` before committing — all tests must pass
-- Run `make lint` for style checks — fix any failures before committing
+- Run `make vet` for Go static analysis — fix any failures before committing
+- Run `pre-commit run --files <changed-files>` for style checks — fix any failures before committing (if pre-commit is available)
 - Run `make build` to verify compilation
 
 ## Coding Standards
