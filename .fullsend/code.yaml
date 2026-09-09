@@ -1,0 +1,6 @@
+---
+# TEMPORARY probe harness for fullsend-ai/fullsend#6649 (nonflux/integration-service#72).
+# Same base as the v0.39.0 code agent; only the sandbox policy differs so the
+# sandbox can reach GitHub Packages for the probe. Remove after the probe.
+base: https://raw.githubusercontent.com/fullsend-ai/agents/c4e059f9f2b8c48e13b3845992b9b774d41b5de7/harness/code.yaml#sha256=4f0d9425d5ee1fa86e21d3b6d1ac9bd086da2f59de9d80a311f753c00d99303d
+policy: policies/probe-github-packages.yaml
