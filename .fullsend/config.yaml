@@ -14,6 +14,9 @@ roles:
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
+agents:
+    - name: code
+      source: code.yaml
 create_issues:
     allow_targets:
         repos:
