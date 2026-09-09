@@ -1,0 +1,104 @@
+name: packages-auth-probe
+
+# Probe for fullsend-ai/fullsend#6649: which credentials does npm.pkg.github.com
+# accept for the public, other-org package @nvidia/openshell-sdk, and which
+# pnpm credential channels still work. Read-only; prints HTTP status codes and
+# non-2xx bodies only. Tokens are never echoed (GITHUB_TOKEN is auto-masked).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  PKG: "@nvidia/openshell-sdk"
+  PKG_ENC: "@nvidia%2Fopenshell-sdk"
+  PKG_VERSION: "0.0.106"
+  REGISTRY: "https://npm.pkg.github.com"
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Helper
+        run: |
+          cat > /tmp/probe.sh <<'EOF'
+          # probe LABEL URL [AUTH_HEADER]
+          probe() {
+            local label="$1" url="$2" auth="${3:-}"
+            local hdrs=/tmp/hdrs.$$ body=/tmp/body.$$ code
+            if [[ -n "$auth" ]]; then
+              code=$(curl -sS -L -o "$body" -D "$hdrs" -w '%{http_code}' -H "Authorization: Bearer $auth" "$url" || true)
+            else
+              code=$(curl -sS -L -o "$body" -D "$hdrs" -w '%{http_code}' "$url" || true)
+            fi
+            echo "== $label -> HTTP $code"
+            grep -i '^location:' "$hdrs" | sed 's/?.*$/?<query stripped>/' | sed 's/^/   redirect: /' || true
+            if [[ "$code" != 2* ]]; then
+              echo "   body: $(head -c 300 "$body" | tr '\n' ' ')"
+            else
+              echo "   bytes: $(wc -c < "$body")"
+            fi
+            rm -f "$hdrs" "$body"
+          }
+          EOF
+          echo "helper written"
+
+      - name: A. anonymous
+        run: |
+          source /tmp/probe.sh
+          probe "anon metadata" "$REGISTRY/$PKG_ENC"
+          probe "anon download" "$REGISTRY/download/$PKG/$PKG_VERSION/placeholder"
+
+      - name: B. Actions GITHUB_TOKEN (packages:read, org nonflux != NVIDIA)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source /tmp/probe.sh
+          probe "GITHUB_TOKEN metadata" "$REGISTRY/$PKG_ENC" "$TOKEN"
+          TARBALL=$(curl -sS -H "Authorization: Bearer $TOKEN" "$REGISTRY/$PKG_ENC" | jq -r --arg v "$PKG_VERSION" '.versions[$v].dist.tarball // empty')
+          echo "tarball url from metadata: ${TARBALL:-<none>}"
+          if [[ -n "$TARBALL" ]]; then
+            probe "GITHUB_TOKEN tarball" "$TARBALL" "$TOKEN"
+          fi
+          echo "== Actions token permissions for this job: contents=read packages=read (nothing else)"
+
+      - name: C. pnpm credential channels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          run_install() {
+            local label="$1"; shift
+            rm -rf node_modules pnpm-lock.yaml
+            "$@" >/tmp/out 2>&1; local rc=$?
+            echo "== $label -> exit $rc"
+            grep -E 'WARN|ERR_PNPM|Unauthorized|Forbidden|Done|Progress: resolved|Packages:' /tmp/out | sed 's/^/   /' | head -8
+            [[ $rc -ne 0 ]] && tail -3 /tmp/out | sed 's/^/   tail: /'
+            return 0
+          }
+          for V in 10.28.0 latest; do
+            echo "############ pnpm@$V"
+            npm i -g "pnpm@$V" >/dev/null 2>&1
+            echo "pnpm version: $(pnpm --version)"
+            rm -rf /tmp/proj && mkdir -p /tmp/proj && cd /tmp/proj
+            printf '{"name":"probe","version":"0.0.0","private":true,"dependencies":{"%s":"%s"}}\n' "$PKG" "$PKG_VERSION" > package.json
+            # C1: committed project .npmrc with ${GITHUB_TOKEN} (Kaiden's layout)
+            printf '@nvidia:registry=%s\n//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}\n' "$REGISTRY" > .npmrc
+            run_install "C1 project .npmrc \${GITHUB_TOKEN}" pnpm install --no-frozen-lockfile
+            # C2: project .npmrc has registry only; credential in user-level ~/.npmrc
+            printf '@nvidia:registry=%s\n' "$REGISTRY" > .npmrc
+            printf '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}\n' > "$HOME/.npmrc"
+            run_install "C2 user ~/.npmrc \${GITHUB_TOKEN}" pnpm install --no-frozen-lockfile
+            rm -f "$HOME/.npmrc"
+            # C3: credential via pnpm_config_ env (pnpm >= 11.6 form)
+            run_install "C3 pnpm_config_//host/:_authToken env" env "pnpm_config_//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN" pnpm install --no-frozen-lockfile
+            # C4: credential via npm_config_ env
+            run_install "C4 npm_config_//host/:_authToken env" env "npm_config_//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN" pnpm install --no-frozen-lockfile
+            # C5: committed .npmrc with ${GITHUB_TOKEN} but env var unset
+            printf '@nvidia:registry=%s\n//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}\n' "$REGISTRY" > .npmrc
+            run_install "C5 project .npmrc, GITHUB_TOKEN unset" env -u GITHUB_TOKEN pnpm install --no-frozen-lockfile
+            cd /
+          done
