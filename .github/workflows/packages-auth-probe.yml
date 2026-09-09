@@ -7,6 +7,8 @@ name: packages-auth-probe
 
 on:
   workflow_dispatch:
+  push:
+    branches: [packages-auth-probe]
 
 permissions:
   contents: read
