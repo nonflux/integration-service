@@ -67,6 +67,36 @@ jobs:
           fi
           echo "== Actions token permissions for this job: contents=read packages=read (nothing else)"
 
+      - name: D. is the CDN redirect usable without the registry auth?
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > /tmp/cdn.py <<'PY'
+          import os, urllib.request, urllib.parse, urllib.error
+          tok = os.environ['TOKEN']
+          url = 'https://npm.pkg.github.com/download/@nvidia/openshell-sdk/0.0.106/dc32180ba1d658fc4ec309bdf89d2b162196928d'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *a, **k): return None
+          op = urllib.request.build_opener(NoRedirect)
+          def get(u, auth=False):
+              req = urllib.request.Request(u, headers={'Authorization': f'Bearer {tok}'} if auth else {})
+              try:
+                  r = op.open(req); return r.status, r.headers.get('location'), f'bytes={len(r.read())}'
+              except urllib.error.HTTPError as e:
+                  return e.code, e.headers.get('location'), e.read()[:160].decode('utf-8','replace')
+          st, loc, _ = get(url, auth=True)
+          p = urllib.parse.urlsplit(loc)
+          q = dict(urllib.parse.parse_qsl(p.query))
+          print('registry download with GITHUB_TOKEN ->', st, 'redirect host:', p.netloc)
+          print('signed query param names:', sorted(q))
+          print('expiry-related params:', {k: v for k, v in q.items() if k.lower() in ('x-amz-expires', 'x-amz-date', 'se', 'expires', 'st', 'sig-expires')})
+          print('signed CDN URL, no auth header ->', get(loc)[0], get(loc)[2])
+          bare = urllib.parse.urlunsplit((p.scheme, p.netloc, p.path, '', ''))
+          print('same CDN path, signature stripped ->', get(bare)[0], get(bare)[2])
+          print('registry download URL, no token ->', get(url)[0], get(url)[2])
+          PY
+          python3 /tmp/cdn.py
+
       - name: C. pnpm credential channels
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
