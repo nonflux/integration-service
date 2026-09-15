@@ -67,6 +67,17 @@ jobs:
           fi
           echo "== Actions token permissions for this job: contents=read packages=read (nothing else)"
 
+      - name: F. does the registry echo request-path text back to an authenticated caller?
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source /tmp/probe.sh
+          probe "auth bogus package name" "$REGISTRY/@nvidia/MARKER_ECHO_TEST" "$TOKEN"
+          probe "auth bogus owner" "$REGISTRY/@MARKER_ECHO_TEST/pkg" "$TOKEN"
+          probe "auth bogus version under download" "$REGISTRY/download/$PKG/MARKER_ECHO_TEST/abc" "$TOKEN"
+          probe "auth bogus hash under download" "$REGISTRY/download/$PKG/$PKG_VERSION/MARKER_ECHO_TEST" "$TOKEN"
+          echo "== auth real package with query marker: body mentions marker $(curl -sS -H "Authorization: Bearer $TOKEN" "$REGISTRY/$PKG_ENC?x=MARKER_ECHO_TEST" | grep -c MARKER_ECHO_TEST || true) time(s)"
+
       - name: D. is the CDN redirect usable without the registry auth?
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
