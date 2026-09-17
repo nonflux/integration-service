@@ -1,0 +1,62 @@
+# Follow-up chained on the fullsend shim: summarize what each agent run
+# published. Read-only; proves the workflow_run + artifact contract.
+name: fullsend-run-info
+on:
+  workflow_run:
+    workflows: ["fullsend"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  info:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: fullsend-*
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: result
+
+      - name: Summarize agent run
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## fullsend run $RUN_ID ($RUN_EVENT)"
+            echo
+            for art in result/fullsend-*; do
+              [ -d "$art" ] || { echo "_no fullsend-* artifact on this run_"; break; }
+              agent=${art#result/fullsend-}
+              echo "### agent: $agent"
+              echo
+              echo '```text'
+              (cd "$art" && find . -type f | sort | sed 's|^\./||')
+              echo '```'
+              m=$(ls "$art"/*/metrics.json 2>/dev/null | head -1)
+              if [ -n "$m" ]; then
+                echo
+                echo "| model | runtime | iterations | turns | tool calls | cost (USD) |"
+                echo "|---|---|---|---|---|---|"
+                jq -r '"| \(.model) | \(.runtime) | \(.iterations) | \(.num_turns) | \(.tool_calls) | \(.total_cost_usd|.*1000|round/1000) |"' "$m"
+              fi
+              r=$(ls "$art"/*/iteration-*/output/*.json 2>/dev/null | sort -V | tail -1)
+              if [ -n "$r" ]; then
+                echo
+                echo "result: \`${r#"$art"/}\`"
+                echo
+                echo '```json'
+                jq '{action, pr_number, head_sha, findings: (.findings|length?), reason}' "$r" 2>/dev/null \
+                  || jq 'with_entries(select(.value|type!="array" and type!="object"))' "$r"
+                echo '```'
+              fi
+              echo
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
