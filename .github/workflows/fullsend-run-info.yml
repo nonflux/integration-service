@@ -13,8 +13,19 @@ jobs:
     permissions:
       actions: read
     steps:
+      - name: Find agent results on this run
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          names=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+            --jq '[.artifacts[].name | select(startswith("fullsend-"))] | join(" ")')
+          echo "artifacts=$names" >> "$GITHUB_OUTPUT"
+          echo "${names:-no agent ran on run $RUN_ID; nothing to do}"
+
       - uses: actions/download-artifact@v4
-        continue-on-error: true      # routing-only runs publish no artifact
+        if: steps.find.outputs.artifacts != ''
         with:
           pattern: fullsend-*
           run-id: ${{ github.event.workflow_run.id }}
@@ -22,10 +33,10 @@ jobs:
           path: result
 
       - name: Summarize agent run
+        if: steps.find.outputs.artifacts != ''
         run: |
           set -euo pipefail
           for art in result/fullsend-*; do
-            [ -d "$art" ] || { echo "no fullsend-* artifact on this run"; break; }
             echo "### agent: ${art#result/fullsend-}"
             m=$(ls "$art"/*/metrics.json 2>/dev/null | head -1)
             [ -n "$m" ] && jq -r '"model=\(.model) runtime=\(.runtime) iterations=\(.iterations) turns=\(.num_turns) cost_usd=\(.total_cost_usd)"' "$m"
