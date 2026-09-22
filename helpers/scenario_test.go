@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 )
 
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
@@ -68,5 +69,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+	})
+})
+
+var _ = Describe("ScenarioValidationMessage", func() {
+	It("returns an empty message when the condition has not been set", func() {
+		scenario := &v1beta2.IntegrationTestScenario{}
+		Expect(helpers.ScenarioValidationMessage(scenario)).To(BeEmpty())
+	})
+
+	It("returns the message of the IntegrationTestScenarioValid condition", func() {
+		scenario := &v1beta2.IntegrationTestScenario{}
+		helpers.SetScenarioIntegrationStatusAsInvalid(scenario, "pipeline not found")
+		Expect(helpers.ScenarioValidationMessage(scenario)).To(Equal("pipeline not found"))
 	})
 })
