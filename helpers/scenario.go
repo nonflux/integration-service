@@ -65,5 +65,8 @@ func IsIntegrationTestScenarioOptional(scenario *v1beta2.IntegrationTestScenario
 // been set yet.
 func ScenarioValidationMessage(scenario *v1beta2.IntegrationTestScenario) string {
 	cond := meta.FindStatusCondition(scenario.Status.Conditions, IntegrationTestScenarioValid)
+	if cond == nil {
+		return ""
+	}
 	return cond.Message
 }
