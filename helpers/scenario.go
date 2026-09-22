@@ -59,3 +59,11 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta2.IntegrationTestScenar
 func IsIntegrationTestScenarioOptional(scenario *v1beta2.IntegrationTestScenario) bool {
 	return metadata.HasLabelWithValue(scenario, "test.appstudio.openshift.io/optional", "true")
 }
+
+// ScenarioValidationMessage returns the message of the scenario's
+// IntegrationTestScenarioValid condition, or "" when the condition has not
+// been set yet.
+func ScenarioValidationMessage(scenario *v1beta2.IntegrationTestScenario) string {
+	cond := meta.FindStatusCondition(scenario.Status.Conditions, IntegrationTestScenarioValid)
+	return cond.Message
+}
