@@ -2,7 +2,7 @@
 # https://github.com/fullsend-ai/fullsend
 #
 # This file configures fullsend for per-repo installation mode.
-# See ADR 0033 for details.
+# See https://fullsend.sh/docs/guides/infrastructure/layered-config-reference
 version: "1"
 roles:
     - triage
@@ -11,6 +11,10 @@ roles:
     - fix
     - retro
     - prioritize
+agents:
+    - name: review
+      source: https://raw.githubusercontent.com/fullsend-ai/agents/fb5e7bfa510ce01ec0851811fdbf4dcd2bb09878/harness/review.yaml#sha256=f907d479383567c5b33c73ac30bd1ba9e91ccdcc86056476315c489d0af207f9
+      ref: steer-recheck
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
