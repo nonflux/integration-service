@@ -62,7 +62,7 @@ jobs:
       issues: write
       packages: read
       pull-requests: write
-    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@de0af3dccd549b8af3a9dfeb0e7e7d738034e453
+    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@62a27c97f92d0df2bed0004a43c512958fbcdfae
     with:
       event_action: ${{ github.event.action }}
       install_mode: per-repo
