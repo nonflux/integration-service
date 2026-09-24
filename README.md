@@ -54,3 +54,13 @@ If you don't vendor dependencies, `go vet` will fail build.
 
 To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
 test coverage will be reported at the end, once all the tests have been executed.
+
+## Fullsend
+
+These commands are handled by [fullsend](https://fullsend.sh/docs) agents:
+
+- `/fs-triage` — triage an issue for implementation
+- `/fs-code` — generate a PR to implement an issue
+- `/fs-review` — review a pull request
+- `/fs-fix` — fix review feedback on a pull request
+- `/fs-fix-stop` — stop an in-progress fix
