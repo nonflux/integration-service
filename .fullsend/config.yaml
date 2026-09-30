@@ -13,8 +13,8 @@ roles:
     - prioritize
 agents:
     - name: review
-      source: https://raw.githubusercontent.com/fullsend-ai/agents/dbe59e46cfb47455dfefb7ffb1f640b04ba1a478/harness/review.yaml#sha256=f907d479383567c5b33c73ac30bd1ba9e91ccdcc86056476315c489d0af207f9
-      ref: steer-recheck
+      source: https://raw.githubusercontent.com/fullsend-ai/agents/24529b2f0cb074889ca6a9585d61cc9c2020bdfc/harness/review.yaml#sha256=d3f5f44b974e6c543162a3b4b790efb0f9dba1079d3e48945caae3b8ea08215b
+      ref: steer-optout-unsteerable-agents
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
